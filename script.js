@@ -4863,7 +4863,6 @@ const saveProfile = (e) => {
             </div>
         </div>
     </div>
-                                    </div>
 
                                     <div className="flex gap-4">
                                         {editingId && (
