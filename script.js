@@ -4802,7 +4802,6 @@ const saveProfile = (e) => {
         </div>
     </div>
 
-</div>
                                     <div className="flex gap-4">
                                         {editingId && (
                                             <button type="button" onClick={deleteProfile} className="btn-metal btn-metal--danger px-10 py-8 rounded-xl text-xs">
