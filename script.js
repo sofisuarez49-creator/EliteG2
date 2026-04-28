@@ -1195,6 +1195,18 @@
             const [brokenGalleryUrlDrafts, setBrokenGalleryUrlDrafts] = useState({});
             const [brokenGallerySavingMap, setBrokenGallerySavingMap] = useState({});
             const [brokenGalleryEditingMap, setBrokenGalleryEditingMap] = useState({});
+            const [characterSearch, setCharacterSearch] = useState('');
+            const [selectedCharacterId, setSelectedCharacterId] = useState('');
+            const [isCharacterPhotosOpen, setIsCharacterPhotosOpen] = useState(false);
+            const [isCharacterScoresOpen, setIsCharacterScoresOpen] = useState(false);
+            const [expandedScoreGroup, setExpandedScoreGroup] = useState('');
+            const [expandedArenaItem, setExpandedArenaItem] = useState('');
+            const [characterMediaDraft, setCharacterMediaDraft] = useState({
+                url: '',
+                label: GALLERY_LABELS[0],
+                type: 'image'
+            });
+            const [characterMediaUrlDrafts, setCharacterMediaUrlDrafts] = useState({});
             const galleryPlaybackTimeoutRef = useRef(null);
 
             const [filters, setFilters] = useState({
@@ -1298,6 +1310,21 @@ const getInitialCatFormData = () => ({
                     missing: withStatus.filter((row) => !row.isComplete)
                 };
             }, [formData]);
+            const getMissingFieldsForProfile = (profile = {}) => {
+                const rows = [
+                    { key: 'nombre', label: 'Nombre', value: profile?.nombre },
+                    { key: 'fotos.0', label: 'Foto principal', value: profile?.fotos?.[0] },
+                    { key: 'profesion', label: 'Profesión', value: profile?.profesion },
+                    { key: 'nacionalidad', label: 'Nacionalidad', value: profile?.nacionalidad },
+                    { key: 'ciudad', label: 'Ciudad', value: profile?.ciudad },
+                    { key: 'fechaNacimiento', label: 'Fecha de nacimiento', value: profile?.fechaNacimiento },
+                    { key: 'estaturaCm', label: 'Estatura', value: profile?.estaturaCm }
+                ];
+                return rows.filter((row) => {
+                    const normalizedValue = typeof row.value === 'string' ? row.value.trim() : row.value;
+                    return normalizedValue === '' || normalizedValue === undefined || normalizedValue === null;
+                });
+            };
             const addGalleryImage = async ({ profileId, url, tag = 'fotos', label = '', type = 'image' }) => {
                 const normalizedUrl = (url || '').trim();
                 const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
@@ -1929,6 +1956,14 @@ const getInitialCatFormData = () => ({
                         fotos: group.fotos.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'es', { sensitivity: 'base' }))
                     }))
                     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+            }, [brokenGalleryPhotos]);
+            const brokenGalleryUrlsByProfile = useMemo(() => {
+                return brokenGalleryPhotos.reduce((acc, photo) => {
+                    if (!photo?.profileId || !photo?.url) return acc;
+                    if (!acc[photo.profileId]) acc[photo.profileId] = new Set();
+                    acc[photo.profileId].add(photo.url);
+                    return acc;
+                }, {});
             }, [brokenGalleryPhotos]);
 
             useEffect(() => {
@@ -3172,6 +3207,25 @@ const saveProfile = (e) => {
                 }
                 return Number(profile.puntuaciones?.[key] || 0);
             };
+            const selectedCategoryProfiles = useMemo(() => {
+                return (perfiles || []).filter((profile) => {
+                    if (!profile) return false;
+                    if (activeTab === 'CATEGORIAS') {
+                        return obtenerCategoriasDePerfil(profile).includes(selectedCategory);
+                    }
+                    return String(profile.profesion || '').trim().toLowerCase() === String(selectedCategory || '').trim().toLowerCase();
+                });
+            }, [perfiles, activeTab, selectedCategory, categorias]);
+            const visibleCategoryProfiles = useMemo(() => {
+                const query = characterSearch.trim().toLowerCase();
+                if (!query) return selectedCategoryProfiles;
+                return selectedCategoryProfiles.filter((profile) => String(profile?.nombre || '').toLowerCase().includes(query));
+            }, [selectedCategoryProfiles, characterSearch]);
+            const selectedCharacterProfile = useMemo(() => {
+                if (!visibleCategoryProfiles.length) return null;
+                const exact = visibleCategoryProfiles.find((profile) => profile?.firebaseId === selectedCharacterId);
+                return exact || visibleCategoryProfiles[0];
+            }, [visibleCategoryProfiles, selectedCharacterId]);
 
             const toggleSort = (key, defaultDirection = 'asc') => {
                 if (sortBy === key) {
@@ -3187,6 +3241,7 @@ const saveProfile = (e) => {
                 Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
                 Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
             };
+            const SCORE_GROUP_LABELS = Object.keys(SCORE_GROUP_TO_ARENAS);
 
             const getScoreBreakdownByCategory = (profileId, categoryKey) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
@@ -3225,6 +3280,73 @@ const saveProfile = (e) => {
                     losses: getSortedNames(lossIds)
                 };
             };
+            const getArenaBreakdown = (profileId, arenaName) => {
+                const wins = [];
+                const losses = [];
+                const profileNameById = new Map(
+                    (perfiles || [])
+                        .filter((profile) => profile?.firebaseId)
+                        .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
+                );
+                const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
+                Object.values(arenaMatchups).forEach((match) => {
+                    if (!match || typeof match !== 'object') return;
+                    if (match.winnerId === profileId && match.loserId) {
+                        wins.push(profileNameById.get(match.loserId) || 'Sin nombre');
+                    }
+                    if (match.loserId === profileId && match.winnerId) {
+                        losses.push(profileNameById.get(match.winnerId) || 'Sin nombre');
+                    }
+                });
+                return {
+                    wins: [...new Set(wins)].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' })),
+                    losses: [...new Set(losses)].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+                };
+            };
+            const getPendingBattlesByArena = (profileId) => {
+                const ids = (perfiles || []).map((profile) => profile?.firebaseId).filter(Boolean);
+                return ARENAS.map((arenaName) => {
+                    const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
+                    const pendingOpponents = ids
+                        .filter((otherId) => otherId !== profileId)
+                        .filter((otherId) => !arenaMatchups[getPairKey(profileId, otherId)])
+                        .map((otherId) => (perfiles.find((profile) => profile.firebaseId === otherId)?.nombre || 'Sin nombre'))
+                        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+                    return { arenaName, pendingOpponents };
+                }).filter((entry) => entry.pendingOpponents.length > 0);
+            };
+
+            useEffect(() => {
+                if (!selectedCategory) {
+                    setCharacterSearch('');
+                    setSelectedCharacterId('');
+                    return;
+                }
+                const firstVisibleId = visibleCategoryProfiles[0]?.firebaseId || '';
+                if (!firstVisibleId) {
+                    setSelectedCharacterId('');
+                    return;
+                }
+                const exists = visibleCategoryProfiles.some((profile) => profile?.firebaseId === selectedCharacterId);
+                if (!exists) setSelectedCharacterId(firstVisibleId);
+            }, [selectedCategory, visibleCategoryProfiles, selectedCharacterId]);
+
+            useEffect(() => {
+                if (!selectedCharacterProfile) {
+                    setCharacterMediaUrlDrafts({});
+                    return;
+                }
+                const mediaItems = [
+                    ...((selectedCharacterProfile?.galeria?.fotos || []).map((item, index) => ({ sourceTag: 'fotos', sourceIndex: index, item }))),
+                    ...((selectedCharacterProfile?.galeria?.videos || []).map((item, index) => ({ sourceTag: 'videos', sourceIndex: index, item }))),
+                    ...((selectedCharacterProfile?.galeria?.gifs || []).map((item, index) => ({ sourceTag: 'gifs', sourceIndex: index, item })))
+                ];
+                const nextDrafts = {};
+                mediaItems.forEach(({ sourceTag, sourceIndex, item }) => {
+                    nextDrafts[`${sourceTag}-${sourceIndex}`] = normalizeGalleryItem(item, sourceTag === 'videos' ? 'video' : 'image').url || '';
+                });
+                setCharacterMediaUrlDrafts(nextDrafts);
+            }, [selectedCharacterProfile]);
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
                 const aValue = getSortValue(a, sortBy);
@@ -3444,106 +3566,201 @@ const saveProfile = (e) => {
 </h2>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-    {(perfiles || []).filter(p => {
-        if (!p) return false;
-        // Si estamos en la pestaña de Categorías Inteligentes:
-        if (activeTab === 'CATEGORIAS') {
-            const misCategorias = obtenerCategoriasDePerfil(p);
-            return misCategorias.includes(selectedCategory);
-        }
-        // Si estamos en Explorar (por profesión):
-        return String(p.profesion || '').trim().toLowerCase() === String(selectedCategory).trim().toLowerCase();
-    }).map(p => {
-                    const profKey = p.profesion?.toUpperCase() || 'DEFAULT';
-                    const neonClass = (typeof neonColors !== 'undefined' && neonColors[profKey]) ? neonColors[profKey] : { color: '#06b6d4', sombra: 'rgba(6,182,212,0.5)' };
-                    return (
-                        <div
-                            key={p.firebaseId || Math.random()}
-                            onClick={() => {
-                                setContextMenuProfileId(null);
-                                openProfileEditor(p);
-                            }}
-                            onContextMenu={(event) => handleContextMenuOpen(event, p)}
-                            className="profile-card group relative rounded-2xl overflow-hidden cursor-pointer"
-                            style={{
-                                '--card-neon-color': neonClass.color,
-                                '--card-neon-glow': neonClass.sombra
-                            }}
-                        >
-                            <div className="aspect-[4/5] bg-slate-950 relative overflow-hidden">
+            <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-8">
+                <div className="space-y-4">
+                    <div className="theme-surface-card border theme-border-secondary rounded-2xl p-4">
+                        <label htmlFor="characterSearchInput" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Buscador de personaje</label>
+                        <input
+                            id="characterSearchInput"
+                            type="text"
+                            value={characterSearch}
+                            onChange={(event) => setCharacterSearch(event.target.value)}
+                            placeholder="Escribí letra por letra..."
+                            className="mt-2 w-full rounded-xl bg-slate-950/80 border border-slate-700 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                        />
+                    </div>
+
+                    <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                        {visibleCategoryProfiles.map((p) => {
+                            const isSelected = selectedCharacterProfile?.firebaseId === p.firebaseId;
+                            return (
+                                <button
+                                    key={p.firebaseId || p.nombre}
+                                    type="button"
+                                    onClick={() => setSelectedCharacterId(p.firebaseId)}
+                                    className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${isSelected ? 'border-cyan-300 bg-cyan-500/10' : 'theme-border-secondary bg-slate-950/60 hover:border-cyan-500/40'}`}
+                                >
+                                    <p className="text-sm font-black text-white">{p.nombre || 'Sin nombre'}</p>
+                                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400 mt-1">{p.nacionalidad || 'Sin nacionalidad'} · {p.ciudad || 'Sin ciudad'}</p>
+                                </button>
+                            );
+                        })}
+                        {!visibleCategoryProfiles.length && (
+                            <div className="theme-surface-card border theme-border-secondary rounded-2xl p-5 text-sm text-slate-300">
+                                No hay coincidencias para esta búsqueda.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="theme-surface-card border theme-border-secondary rounded-2xl p-6 space-y-6">
+                    {selectedCharacterProfile ? (
+                        <>
+                            <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6">
                                 <img
-                                    src={getSafeImageSrc((p.fotos && p.fotos.length > 0) ? p.fotos[0] : '', 'https://via.placeholder.com/400x500')}
-                                    className="w-full h-full object-cover transition-transform duration-700 opacity-80 group-hover:opacity-100"
+                                    src={getSafeImageSrc(selectedCharacterProfile?.fotos?.[0] || '', 'https://via.placeholder.com/400x500')}
+                                    className="w-full max-w-[220px] h-[280px] rounded-2xl object-cover border theme-border-secondary"
                                     onError={applyCryingEmojiFallback}
                                 />
-
-                                <div className="absolute top-3 left-3 z-20">
+                                <div className="space-y-3">
+                                    <h3 className="text-3xl font-black italic text-white">{selectedCharacterProfile.nombre || 'Sin nombre'}</h3>
+                                    <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                                        Nacimiento: {selectedCharacterProfile.fechaNacimiento || 'Sin fecha'} · Edad: {calcularEdad(selectedCharacterProfile.fechaNacimiento)}
+                                    </p>
+                                    <p className="text-xs uppercase tracking-[0.16em] text-slate-300">
+                                        {selectedCharacterProfile.nacionalidad || 'Sin nacionalidad'} · {selectedCharacterProfile.ciudad || 'Sin ciudad'}
+                                    </p>
                                     <button
                                         type="button"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            setProfileActionError('');
-                                            setContextProfile(p);
-                                            setContextMenuProfileId((prev) => prev === p.firebaseId ? null : p.firebaseId);
-                                        }}
-                                        className="card-menu-btn rounded-full bg-slate-900/88 backdrop-blur-md border border-white/10 text-slate-200 hover:text-white hover:border-[var(--metal-gold)] transition-all flex items-center justify-center"
-                                        aria-label="Abrir menú contextual del perfil"
+                                        onClick={() => openProfileEditor(selectedCharacterProfile)}
+                                        className="btn-metal btn-metal--silver px-4 py-2 rounded-full text-[10px] text-slate-900 uppercase tracking-[0.12em]"
                                     >
-                                        <LucideIcon name="more-vertical" size={12} />
+                                        Editar datos
                                     </button>
-
-                                    {contextMenuProfileId === p.firebaseId && (
-                                        <div className="absolute top-12 left-0 min-w-[170px] rounded-xl border theme-border-secondary bg-slate-950/95 shadow-2xl p-2 space-y-1" onClick={(event) => event.stopPropagation()}>
-                                            <button
-                                                type="button"
-                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-[0.12em] text-slate-200 hover:bg-slate-800 transition-all"
-                                                onClick={() => {
-                                                    setContextMenuProfileId(null);
-                                                    openProfileEditor(p);
-                                                }}
-                                            >
-                                                Editar
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-[0.12em] text-red-300 hover:bg-red-500/20 transition-all"
-                                                onClick={() => {
-                                                    requestDeleteProfile(p);
-                                                    setContextMenuProfileId(null);
-                                                }}
-                                            >
-                                                Eliminar
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
+                            </div>
 
-                                <div className="card-score-badge absolute top-2 right-2 w-14 h-14 backdrop-blur-md rounded-full flex flex-col items-center justify-center border">
-                                    <span className="text-[9px] font-black text-[var(--metal-gold)] leading-none">G2</span>
-                                    <span className="text-lg font-black text-white">
-                                        {typeof calcularPromedio === 'function' ? calcularPromedio(p) : '8.5'}
-                                    </span>
-                                </div>
-
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <div className="text-bubble card-footer-profession w-full backdrop-blur-md p-4 rounded-2xl border">
-                                        <h3 className="text-lg font-black text-white italic tracking-tighter leading-none flex items-center gap-2">
-                                            {p.nombre}
-                                            <span className="text-[var(--metal-gold)] text-sm not-italic">
-                                                ({typeof calcularEdad === 'function' ? calcularEdad(p.fechaNacimiento) : '??'})
-                                            </span>
-                                        </h3>
-                                        <div className="flex justify-between items-center mt-1">
-                                            <span className="text-[var(--metal-gold)] text-[7px] font-black uppercase tracking-widest">{p.profesion}</span>
-                                            <p className="text-[7px] font-bold text-slate-400 uppercase">{p.nacionalidad}</p>
+                            <div className="space-y-2">
+                                <button type="button" onClick={() => setIsCharacterPhotosOpen((prev) => !prev)} className="w-full text-left px-4 py-3 rounded-xl bg-slate-950/80 border theme-border-secondary text-xs font-black uppercase tracking-[0.2em] text-[var(--metal-gold)]">
+                                    FOTOS
+                                </button>
+                                {isCharacterPhotosOpen && (
+                                    <div className="space-y-4 p-4 border theme-border-secondary rounded-xl bg-slate-950/50">
+                                        {[...((selectedCharacterProfile?.galeria?.fotos || []).map((item, index) => ({ item, sourceTag: 'fotos', sourceIndex: index }))), ...((selectedCharacterProfile?.galeria?.videos || []).map((item, index) => ({ item, sourceTag: 'videos', sourceIndex: index })))]
+                                            .map(({ item, sourceTag, sourceIndex }) => {
+                                                const normalizedItem = normalizeGalleryItem(item, sourceTag === 'videos' ? 'video' : 'image');
+                                                const draftKey = `${sourceTag}-${sourceIndex}`;
+                                                const broken = normalizedItem.type === 'image' && !!brokenGalleryUrlsByProfile[selectedCharacterProfile.firebaseId]?.has(normalizedItem.url);
+                                                return (
+                                                    <div key={draftKey} className="p-3 rounded-xl border border-slate-700 bg-slate-900/60 space-y-2">
+                                                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{sourceTag} · {normalizedItem.label || 'Sin etiqueta'} {broken ? '· URL rota' : ''}</p>
+                                                        <input
+                                                            type="text"
+                                                            value={characterMediaUrlDrafts[draftKey] || ''}
+                                                            onChange={(event) => setCharacterMediaUrlDrafts((prev) => ({ ...prev, [draftKey]: event.target.value }))}
+                                                            className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            className="btn-metal btn-metal--silver px-3 py-1 rounded-full text-[9px] text-slate-900"
+                                                            onClick={() => updateGalleryItemUrl({ profileId: selectedCharacterProfile.firebaseId, sourceTag, sourceIndex, url: characterMediaUrlDrafts[draftKey] || '' })}
+                                                        >
+                                                            Guardar URL
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                                            <input type="text" value={characterMediaDraft.url} onChange={(event) => setCharacterMediaDraft((prev) => ({ ...prev, url: event.target.value }))} placeholder="URL multimedia" className="md:col-span-2 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs" />
+                                            <select value={characterMediaDraft.label} onChange={(event) => setCharacterMediaDraft((prev) => ({ ...prev, label: event.target.value }))} className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs">
+                                                {GALLERY_LABELS.map((label) => <option key={label} value={label}>{label}</option>)}
+                                            </select>
+                                            <select value={characterMediaDraft.type} onChange={(event) => setCharacterMediaDraft((prev) => ({ ...prev, type: event.target.value }))} className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs">
+                                                <option value="image">Imagen</option>
+                                                <option value="video">Video</option>
+                                            </select>
+                                            <button type="button" className="btn-metal btn-metal--gold px-4 py-2 rounded-full text-[10px]" onClick={async () => {
+                                                await submitGalleryImage({ profileId: selectedCharacterProfile.firebaseId, url: characterMediaDraft.url, label: characterMediaDraft.label, type: characterMediaDraft.type });
+                                                setCharacterMediaDraft({ url: '', label: GALLERY_LABELS[0], type: 'image' });
+                                            }}>
+                                                Agregar por URL
+                                            </button>
+                                            <label className="btn-metal btn-metal--silver px-4 py-2 rounded-full text-[10px] text-slate-900 cursor-pointer text-center">
+                                                Subir archivo
+                                                <input type="file" className="hidden" accept="image/*,video/*" onChange={async (event) => {
+                                                    const selectedFile = event.target.files?.[0];
+                                                    if (!selectedFile) return;
+                                                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                                                    const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
+                                                    await submitGalleryImage({ profileId: selectedCharacterProfile.firebaseId, url: dataUrl, label: characterMediaDraft.label, type: inferredType });
+                                                    event.target.value = '';
+                                                }} />
+                                            </label>
                                         </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <button type="button" onClick={() => setIsCharacterScoresOpen((prev) => !prev)} className="w-full text-left px-4 py-3 rounded-xl bg-slate-950/80 border theme-border-secondary text-xs font-black uppercase tracking-[0.2em] text-[var(--metal-gold)]">
+                                    Puntajes
+                                </button>
+                                {isCharacterScoresOpen && (
+                                    <div className="space-y-3 p-4 border theme-border-secondary rounded-xl bg-slate-950/50">
+                                        {CARACTERISTICAS.map((arenaName) => {
+                                            const isExpanded = expandedArenaItem === arenaName;
+                                            const breakdown = getArenaBreakdown(selectedCharacterProfile.firebaseId, arenaName);
+                                            const arenaScore = getProfileScores(selectedCharacterProfile)[arenaName] || 0;
+                                            return (
+                                                <div key={arenaName} className="rounded-lg border border-slate-700 overflow-hidden">
+                                                    <button type="button" onClick={() => setExpandedArenaItem((prev) => prev === arenaName ? '' : arenaName)} className="w-full px-3 py-2 bg-slate-900/80 flex items-center justify-between text-xs">
+                                                        <span>{arenaName}</span>
+                                                        <span className="font-black text-[var(--metal-gold)]">{arenaScore}</span>
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <div className="px-3 py-2 text-[11px] text-slate-300 space-y-1">
+                                                            <p>Ganadas: {breakdown.wins.length ? breakdown.wins.join(', ') : 'Sin batallas ganadas'}</p>
+                                                            <p>Perdidas: {breakdown.losses.length ? breakdown.losses.join(', ') : 'Sin derrotas'}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        <div className="pt-2">
+                                            {SCORE_GROUP_LABELS.map((groupName) => {
+                                                const isExpandedGroup = expandedScoreGroup === groupName;
+                                                const arenas = SCORE_GROUP_TO_ARENAS[groupName] || [];
+                                                const total = arenas.reduce((acc, arena) => acc + (getProfileScores(selectedCharacterProfile)[arena] || 0), 0);
+                                                return (
+                                                    <div key={groupName} className="mt-2 rounded-lg border border-slate-700 overflow-hidden">
+                                                        <button type="button" onClick={() => setExpandedScoreGroup((prev) => prev === groupName ? '' : groupName)} className="w-full px-3 py-2 bg-slate-900/80 flex items-center justify-between text-xs uppercase tracking-[0.14em]">
+                                                            <span>{groupName}</span>
+                                                            <span>Total: {total}</span>
+                                                        </button>
+                                                        {isExpandedGroup && (
+                                                            <div className="px-3 py-2 text-[11px] text-slate-300">
+                                                                {arenas.map((arena) => <p key={arena}>{arena}: {getProfileScores(selectedCharacterProfile)[arena] || 0}</p>)}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div className="p-4 rounded-xl border theme-border-secondary bg-slate-950/50">
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--metal-gold)] mb-2">Datos faltantes</p>
+                                    {getMissingFieldsForProfile(selectedCharacterProfile).length ? (
+                                        <ul className="text-xs text-slate-300 space-y-1">{getMissingFieldsForProfile(selectedCharacterProfile).map((item) => <li key={item.key}>• {item.label}</li>)}</ul>
+                                    ) : <p className="text-xs text-emerald-300">Perfil completo.</p>}
+                                </div>
+                                <div className="p-4 rounded-xl border theme-border-secondary bg-slate-950/50">
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--metal-gold)] mb-2">Batallas pendientes</p>
+                                    <div className="max-h-40 overflow-y-auto text-xs text-slate-300 space-y-1">
+                                        {getPendingBattlesByArena(selectedCharacterProfile.firebaseId).map((entry) => (
+                                            <p key={entry.arenaName}><span className="text-white">{entry.arenaName}</span>: {entry.pendingOpponents.length} pendientes</p>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    );
-                })}
+                        </>
+                    ) : (
+                        <p className="text-sm text-slate-300">Seleccioná un personaje para ver su ficha.</p>
+                    )}
+                </div>
             </div>
 
             {contextMenuOpen && contextProfile && (
