@@ -1151,6 +1151,13 @@
             const [maxEdad, setMaxEdad] = useState(60);
 
             const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [personajesSearchTerm, setPersonajesSearchTerm] = useState('');
+            const [selectedPersonajeId, setSelectedPersonajeId] = useState(null);
+            const [personajesDetailSection, setPersonajesDetailSection] = useState(null);
+            const [personajesSaving, setPersonajesSaving] = useState(false);
+            const [personajesNewMediaUrl, setPersonajesNewMediaUrl] = useState('');
+            const [personajesNewMediaType, setPersonajesNewMediaType] = useState('image');
+            const [personajesNewMediaLabel, setPersonajesNewMediaLabel] = useState(GALLERY_LABELS[0]);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
@@ -1187,6 +1194,7 @@
             const [isGalleryPlaying, setIsGalleryPlaying] = useState(false);
             const [isGalleryRandom, setIsGalleryRandom] = useState(false);
             const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
+            const [escenas, setEscenas] = useState([]);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
             const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
@@ -1326,25 +1334,24 @@
                     console.error('Error al guardar archivo en galería:', error);
                 }
             };
-            const submitAnonimoGalleryImage = async ({ url = anonimoUrlInput, label = anonimoGalleryLabel, type = anonimoGalleryMediaType } = {}) => {
-                const normalizedUrl = (url || '').trim();
-                const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
-                const normalizedType = detectGalleryItemType(normalizedUrl, type);
+            const submitEscena = async () => {
+                const normalizedUrl = (urlInput || '').trim();
                 if (!normalizedUrl) return;
 
-                const targetTag = normalizedType === 'video' ? 'videos' : 'fotos';
-                const galleryRef = db.ref(`anonimo/galeria/${targetTag}`);
-
+                const normalizedLabel = GALLERY_LABELS.includes(galleryLabel) ? galleryLabel : '';
+                const normalizedType = detectGalleryItemType(normalizedUrl, galleryMediaType);
                 try {
-                    const snapshot = await galleryRef.once('value');
-                    const currentItems = Array.isArray(snapshot.val()) ? snapshot.val() : [];
-                    const nextItems = [...currentItems, { url: normalizedUrl, label: normalizedLabel, type: normalizedType }];
-                    await galleryRef.set(nextItems);
-                    setAnonimoUrlInput('');
-                    setAnonimoGalleryLabel(GALLERY_LABELS[0]);
-                    setAnonimoGalleryMediaType('image');
+                    await db.ref('escenas').push({
+                        url: normalizedUrl,
+                        label: normalizedLabel,
+                        type: normalizedType,
+                        createdAt: Date.now()
+                    });
+                    setUrlInput('');
+                    setGalleryLabel(GALLERY_LABELS[0]);
+                    setGalleryMediaType('image');
                 } catch (error) {
-                    console.error('Error al guardar archivo anónimo:', error);
+                    console.error('Error al guardar escena:', error);
                 }
             };
             const updateGalleryItemLabel = async ({ profileId, sourceTag, sourceIndex, label }) => {
@@ -1728,7 +1735,7 @@
             const uniqueProfesiones = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.profesion).filter(Boolean))], [perfiles]);
             const uniqueCiudades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.ciudad).filter(Boolean))], [perfiles]);
             const allGalleryPhotos = useMemo(() => {
-                const profilePhotos = (perfiles || []).flatMap((perfil) => {
+                const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -1775,28 +1782,8 @@
                         })
                         .filter(Boolean);
                 });
-                const anonimoPhotos = (anonimoMediaItems || [])
-                    .map((item, index) => {
-                        const normalizedItem = normalizeGalleryItem(item);
-                        if (!normalizedItem.url) return null;
-                        return {
-                            id: `ANONIMO-${index}-${normalizedItem.url}`,
-                            url: normalizedItem.url,
-                            label: normalizedItem.label,
-                            type: normalizedItem.type,
-                            isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
-                            nombre: 'Anónimo',
-                            profesion: 'Archivo anónimo',
-                            nacionalidad: '',
-                            fotoPerfil: normalizedItem.url,
-                            profileId: 'ANONIMO',
-                            sourceTag: item.sourceTag || (normalizedItem.type === 'video' ? 'videos' : 'fotos'),
-                            sourceIndex: Number.isInteger(item.sourceIndex) ? item.sourceIndex : index
-                        };
-                    })
-                    .filter(Boolean);
-                return [...profilePhotos, ...anonimoPhotos];
-            }, [perfiles, anonimoMediaItems]);
+                return [...profileGalleryPhotos, ...(escenas || [])];
+            }, [perfiles, escenas]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
@@ -1955,6 +1942,12 @@
                 if (activeTab !== 'GALERIA') {
                     setSelectedGalleryBucket(null);
                     setSelectedGalleryIndex(null);
+                }
+            }, [activeTab]);
+            useEffect(() => {
+                if (activeTab !== 'PERSONAJES') {
+                    setSelectedPersonajeId(null);
+                    setPersonajesDetailSection(null);
                 }
             }, [activeTab]);
 
@@ -3161,6 +3154,7 @@ const saveProfile = (e) => {
                 Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
                 Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
             };
+            const CHARACTERISTIC_GROUPS = Object.entries(SCORE_GROUP_TO_ARENAS);
 
             const getScoreBreakdownByCategory = (profileId, categoryKey) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
@@ -3199,6 +3193,52 @@ const saveProfile = (e) => {
                     losses: getSortedNames(lossIds)
                 };
             };
+            const getArenaBreakdownForProfile = (profileId, arenaName) => {
+                if (!profileId || !arenaName) return { wins: [], losses: [] };
+                const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
+                const winIds = new Set();
+                const lossIds = new Set();
+
+                Object.values(arenaMatchups).forEach((match) => {
+                    if (!match || typeof match !== 'object') return;
+                    if (match.winnerId === profileId && match.loserId) winIds.add(match.loserId);
+                    if (match.loserId === profileId && match.winnerId) lossIds.add(match.winnerId);
+                });
+
+                const profileNameById = new Map(
+                    (perfiles || [])
+                        .filter((profile) => profile?.firebaseId)
+                        .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
+                );
+                const normalizeNames = (idsSet) => [...idsSet]
+                    .map((id) => profileNameById.get(id))
+                    .filter(Boolean)
+                    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+                return {
+                    wins: normalizeNames(winIds),
+                    losses: normalizeNames(lossIds)
+                };
+            };
+            const selectedPersonaje = useMemo(
+                () => (perfiles || []).find((profile) => profile?.firebaseId === selectedPersonajeId) || null,
+                [perfiles, selectedPersonajeId]
+            );
+            const personajesSearchResults = useMemo(() => {
+                const query = String(personajesSearchTerm || '').trim().toLowerCase();
+                const baseProfiles = [...(perfiles || [])].sort((a, b) => (a?.nombre || '').localeCompare((b?.nombre || ''), 'es', { sensitivity: 'base' }));
+                if (!query) return baseProfiles;
+                return baseProfiles.filter((profile) => {
+                    const edad = calcularEdad(profile?.fechaNacimiento);
+                    const candidateText = [
+                        profile?.nombre || '',
+                        profile?.profesion || '',
+                        profile?.nacionalidad || '',
+                        Number.isFinite(edad) ? String(edad) : ''
+                    ].join(' ').toLowerCase();
+                    return candidateText.includes(query);
+                });
+            }, [perfiles, personajesSearchTerm]);
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
                 const aValue = getSortValue(a, sortBy);
@@ -3581,7 +3621,47 @@ const saveProfile = (e) => {
                     </div>
                     <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
                         <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Perfiles</p>
-                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId)).size}</p>
+                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId).filter(Boolean)).size}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] p-5">
+                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+                    <div className="flex-1 space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Escenas</p>
+                        <p className="text-xs text-slate-400">Cargá una URL de foto o video sin asignarla a ningún personaje.</p>
+                        <input
+                            type="text"
+                            value={urlInput}
+                            onChange={(e) => setUrlInput(e.target.value)}
+                            className="w-full filter-select"
+                            placeholder="https://..."
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <select
+                            value={galleryLabel}
+                            onChange={(e) => setGalleryLabel(e.target.value)}
+                            className="filter-select"
+                        >
+                            {GALLERY_LABELS.map(label => <option key={label} value={label}>{label}</option>)}
+                        </select>
+                        <select
+                            value={galleryMediaType}
+                            onChange={(e) => setGalleryMediaType(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="image">Imagen</option>
+                            <option value="video">Video</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={submitEscena}
+                            className="btn-metal btn-metal--gold col-span-2 px-4 py-2 rounded-full text-[10px] tracking-[0.08em]"
+                        >
+                            Guardar escena
+                        </button>
                     </div>
                 </div>
             </div>
@@ -4988,7 +5068,6 @@ const saveProfile = (e) => {
         </div>
     </div>
 
-</div>
                                     <div className="flex gap-4">
                                         {editingId && (
                                             <button type="button" onClick={deleteProfile} className="btn-metal btn-metal--danger px-10 py-8 rounded-xl text-xs">
