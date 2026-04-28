@@ -1174,6 +1174,10 @@
             const [urlInput, setUrlInput] = useState('');
             const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
             const [galleryMediaType, setGalleryMediaType] = useState('image');
+            const [anonimoUrlInput, setAnonimoUrlInput] = useState('');
+            const [anonimoGalleryLabel, setAnonimoGalleryLabel] = useState(GALLERY_LABELS[0]);
+            const [anonimoGalleryMediaType, setAnonimoGalleryMediaType] = useState('image');
+            const [anonimoMediaItems, setAnonimoMediaItems] = useState([]);
             const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
             const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
             const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
@@ -1322,6 +1326,27 @@
                     console.error('Error al guardar archivo en galería:', error);
                 }
             };
+            const submitAnonimoGalleryImage = async ({ url = anonimoUrlInput, label = anonimoGalleryLabel, type = anonimoGalleryMediaType } = {}) => {
+                const normalizedUrl = (url || '').trim();
+                const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
+                const normalizedType = detectGalleryItemType(normalizedUrl, type);
+                if (!normalizedUrl) return;
+
+                const targetTag = normalizedType === 'video' ? 'videos' : 'fotos';
+                const galleryRef = db.ref(`anonimo/galeria/${targetTag}`);
+
+                try {
+                    const snapshot = await galleryRef.once('value');
+                    const currentItems = Array.isArray(snapshot.val()) ? snapshot.val() : [];
+                    const nextItems = [...currentItems, { url: normalizedUrl, label: normalizedLabel, type: normalizedType }];
+                    await galleryRef.set(nextItems);
+                    setAnonimoUrlInput('');
+                    setAnonimoGalleryLabel(GALLERY_LABELS[0]);
+                    setAnonimoGalleryMediaType('image');
+                } catch (error) {
+                    console.error('Error al guardar archivo anónimo:', error);
+                }
+            };
             const updateGalleryItemLabel = async ({ profileId, sourceTag, sourceIndex, label }) => {
                 if (!profileId || !sourceTag || !Number.isInteger(sourceIndex)) return;
                 const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
@@ -1456,6 +1481,20 @@
                     setGalleryMediaType(inferredType);
                 } catch (error) {
                     console.error('Error al cargar archivo local de galería:', error);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            const handleLocalAnonimoFileUpload = async (event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedFile) return;
+                try {
+                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                    const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
+                    setAnonimoUrlInput(dataUrl);
+                    setAnonimoGalleryMediaType(inferredType);
+                } catch (error) {
+                    console.error('Error al cargar archivo local anónimo:', error);
                 } finally {
                     event.target.value = '';
                 }
@@ -1609,6 +1648,33 @@
                         setPerfiles([]);
                     }
                 });
+                const anonimoGalleryRef = db.ref('anonimo/galeria');
+                anonimoGalleryRef.on('value', (snapshot) => {
+                    const data = snapshot.val() || {};
+                    setAnonimoMediaItems([
+                        ...(Array.isArray(data?.fotos)
+                            ? data.fotos.map((item, sourceIndex) => ({
+                                ...normalizeGalleryItem(item, 'image'),
+                                sourceTag: 'fotos',
+                                sourceIndex
+                            }))
+                            : []),
+                        ...(Array.isArray(data?.gifs)
+                            ? data.gifs.map((item, sourceIndex) => ({
+                                ...normalizeGalleryItem(item, 'image'),
+                                sourceTag: 'gifs',
+                                sourceIndex
+                            }))
+                            : []),
+                        ...(Array.isArray(data?.videos)
+                            ? data.videos.map((item, sourceIndex) => ({
+                                ...normalizeGalleryItem(item, 'video'),
+                                sourceTag: 'videos',
+                                sourceIndex
+                            }))
+                            : [])
+                    ]);
+                });
 
                 const arenasRef = db.ref('arenaBattleState');
                 arenasRef.on('value', (snapshot) => {
@@ -1622,6 +1688,7 @@
                 return () => {
                     window.removeEventListener('message', handleMessage);
                     perfilesRef.off();
+                    anonimoGalleryRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
                 };
@@ -1661,7 +1728,7 @@
             const uniqueProfesiones = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.profesion).filter(Boolean))], [perfiles]);
             const uniqueCiudades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.ciudad).filter(Boolean))], [perfiles]);
             const allGalleryPhotos = useMemo(() => {
-                return (perfiles || []).flatMap((perfil) => {
+                const profilePhotos = (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -1708,7 +1775,28 @@
                         })
                         .filter(Boolean);
                 });
-            }, [perfiles]);
+                const anonimoPhotos = (anonimoMediaItems || [])
+                    .map((item, index) => {
+                        const normalizedItem = normalizeGalleryItem(item);
+                        if (!normalizedItem.url) return null;
+                        return {
+                            id: `ANONIMO-${index}-${normalizedItem.url}`,
+                            url: normalizedItem.url,
+                            label: normalizedItem.label,
+                            type: normalizedItem.type,
+                            isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
+                            nombre: 'Anónimo',
+                            profesion: 'Archivo anónimo',
+                            nacionalidad: '',
+                            fotoPerfil: normalizedItem.url,
+                            profileId: 'ANONIMO',
+                            sourceTag: item.sourceTag || (normalizedItem.type === 'video' ? 'videos' : 'fotos'),
+                            sourceIndex: Number.isInteger(item.sourceIndex) ? item.sourceIndex : index
+                        };
+                    })
+                    .filter(Boolean);
+                return [...profilePhotos, ...anonimoPhotos];
+            }, [perfiles, anonimoMediaItems]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
@@ -3151,7 +3239,8 @@ const saveProfile = (e) => {
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
-                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' },
+                                { id: 'ANONIMO', icon: 'ghost', label: 'Anónimo' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -4022,6 +4111,103 @@ const saveProfile = (e) => {
                             ))}
                         </div>
                     </div>
+                </div>
+            )}
+        </div>
+    )}
+
+    {/* 4. VISTA ANÓNIMO */}
+    {activeTab === 'ANONIMO' && (
+        <div className="space-y-10 animate-in fade-in duration-500">
+            <div>
+                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Anónimo</h2>
+                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Multimedia sin personaje · también visible en Galería General</p>
+            </div>
+
+            <div className="theme-surface-soft border theme-border-secondary rounded-[2rem] p-6 space-y-4">
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(190px,0.8fr)]">
+                    <input
+                        placeholder={anonimoGalleryMediaType === 'video' ? "https://video.com/video.mp4 o https://youtube.com/..." : "https://imagen.com/anonimo.jpg"}
+                        className="min-w-0 theme-surface-soft border theme-border-secondary p-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold text-xs"
+                        value={anonimoUrlInput}
+                        onChange={(event) => setAnonimoUrlInput(event.target.value)}
+                    />
+                    <select
+                        value={anonimoGalleryMediaType}
+                        onChange={(event) => setAnonimoGalleryMediaType(event.target.value)}
+                        className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
+                    >
+                        <option value="image">Imagen</option>
+                        <option value="video">Video</option>
+                    </select>
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_minmax(210px,auto)]">
+                        <select
+                            value={anonimoGalleryLabel}
+                            onChange={(event) => setAnonimoGalleryLabel(event.target.value)}
+                            className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
+                        >
+                            {GALLERY_LABELS.map((label) => (
+                                <option key={label} value={label}>Etiqueta {label}</option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => submitAnonimoGalleryImage()}
+                            className="btn-metal btn-metal--gold w-full sm:w-auto px-6 py-4 rounded-xl text-[10px] sm:min-w-[210px]"
+                        >
+                            Guardar archivo
+                        </button>
+                    </div>
+                </div>
+                <input
+                    type="file"
+                    accept="image/*,video/*,.gif"
+                    onChange={handleLocalAnonimoFileUpload}
+                    className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
+                />
+            </div>
+
+            {anonimoMediaItems.length === 0 ? (
+                <div className="py-24 border border-dashed theme-border-secondary rounded-2xl text-center bg-slate-950/30">
+                    <div className="w-20 h-20 rounded-full bg-slate-900 border theme-border-secondary flex items-center justify-center mx-auto mb-6">
+                        <LucideIcon name="image-off" size={28} className="text-slate-600" />
+                    </div>
+                    <h3 className="font-title text-xl font-black italic text-white tracking-[0.06em]">Sin archivos anónimos todavía</h3>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
+                    {anonimoMediaItems.map((item, index) => {
+                        const normalizedItem = normalizeGalleryItem(item);
+                        const labelStyle = getGalleryLabelStyle(normalizedItem.label);
+                        return (
+                            <article key={`anonimo-item-${index}`} className="theme-surface-card border theme-border-secondary rounded-[2.4rem] overflow-hidden">
+                                <div className="aspect-[4/5] relative overflow-hidden bg-slate-950">
+                                    {normalizedItem.type === 'video' ? (
+                                        <video src={normalizedItem.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
+                                    ) : (
+                                        <img src={getSafeImageSrc(normalizedItem.url, CRYING_EMOJI_FALLBACK)} className="w-full h-full object-cover" alt="Archivo anónimo" onError={applyCryingEmojiFallback} />
+                                    )}
+                                    <div className="absolute top-3 right-3 px-3 py-1 rounded-full border theme-border-secondary bg-slate-950/80 text-[10px] font-black uppercase tracking-[0.15em] text-slate-200">
+                                        {normalizedItem.type === 'video' ? 'Video' : 'Imagen'}
+                                    </div>
+                                    {normalizedItem.label && (
+                                        <div
+                                            className="absolute bottom-3 left-1/2 -translate-x-1/2 min-w-[3.25rem] rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.35em] backdrop-blur-md text-center"
+                                            style={{
+                                                background: labelStyle.bg,
+                                                borderColor: labelStyle.border,
+                                                color: labelStyle.text,
+                                                boxShadow: `0 0 14px ${labelStyle.glow}, 0 0 24px ${labelStyle.glow}`,
+                                                textShadow: `0 0 10px ${labelStyle.glow}`
+                                            }}
+                                        >
+                                            {normalizedItem.label}
+                                        </div>
+                                    )}
+                                </div>
+                            </article>
+                        );
+                    })}
                 </div>
             )}
         </div>
