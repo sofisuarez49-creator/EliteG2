@@ -146,7 +146,6 @@
         };
         const VIDEO_FILE_REGEX = /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i;
         const GIF_FILE_REGEX = /\.gif(\?.*)?$/i;
-        const SCENE_FREE_CATEGORIES = ['General', 'Acción', 'Romántica', 'NSFW'];
         const YOUTUBE_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i;
         const VIMEO_REGEX = /vimeo\.com\/(?:video\/)?(\d+)/i;
         const getVideoEmbedInfo = (url) => {
@@ -174,68 +173,6 @@
             return null;
         };
         const BLOCKED_MEDIA_HOST_PATTERNS = ['eporner.com'];
-        const INSECURE_MEDIA_CLEANUP_PATH = 'mediaCleanupQueue';
-        const createInsecureMediaEntry = ({
-            originalUrl = '',
-            sanitizedUrl = '',
-            contextPath = '',
-            reason = 'unknown',
-            status = 'flagged'
-        } = {}) => ({
-            originalUrl,
-            sanitizedUrl,
-            contextPath,
-            reason,
-            status,
-            detectedAt: firebase.database.ServerValue.TIMESTAMP
-        });
-        const sanitizeMediaUrl = (rawUrl = '', fallback = '', { contextPath = '' } = {}) => {
-            const normalized = String(rawUrl || '').trim();
-            const fallbackValue = String(fallback || '').trim();
-            if (!normalized) {
-                return { url: fallbackValue, changed: normalized !== fallbackValue, flagged: false, reason: '', originalUrl: normalized };
-            }
-            if (isBlockedMediaUrl(normalized)) {
-                return {
-                    url: fallbackValue,
-                    changed: normalized !== fallbackValue,
-                    flagged: true,
-                    reason: 'blocked_host',
-                    originalUrl: normalized,
-                    contextPath
-                };
-            }
-            if (normalized.startsWith('http://')) {
-                return {
-                    url: normalized.replace(/^http:\/\//i, 'https://'),
-                    changed: true,
-                    flagged: true,
-                    reason: 'http_upgraded',
-                    originalUrl: normalized,
-                    contextPath
-                };
-            }
-            return { url: normalized, changed: false, flagged: false, reason: '', originalUrl: normalized, contextPath };
-        };
-        const queueInsecureMediaEntries = async (entries = []) => {
-            const validEntries = (entries || []).filter(Boolean);
-            if (!validEntries.length) return;
-            const cleanupRef = db.ref(INSECURE_MEDIA_CLEANUP_PATH);
-            await Promise.all(validEntries.map((entry) => cleanupRef.push(entry)));
-        };
-        const validateHttpsMediaUrl = async (url = '', mediaType = 'image') => {
-            const normalizedUrl = String(url || '').trim();
-            if (!normalizedUrl || !normalizedUrl.startsWith('https://')) return false;
-            if (mediaType === 'image') {
-                return !(await checkImageUrlIsBroken(normalizedUrl, { timeoutMs: 5000, retries: 1 }));
-            }
-            try {
-                await fetch(normalizedUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-                return true;
-            } catch {
-                return false;
-            }
-        };
         const isBlockedMediaUrl = (rawUrl = '') => {
             const normalized = String(rawUrl || '').trim();
             if (!normalized || normalized.startsWith('data:') || normalized.startsWith('blob:')) return false;
@@ -248,16 +185,10 @@
             }
         };
         const getSafeImageSrc = (rawUrl = '', fallback = '') => {
-            const result = sanitizeMediaUrl(rawUrl, fallback);
-            return result.url;
+            const normalized = String(rawUrl || '').trim();
+            if (!normalized || isBlockedMediaUrl(normalized)) return fallback;
+            return normalized;
         };
-        const normalizeSearchValue = (value = '') => (
-            String(value || '')
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .toLowerCase()
-                .trim()
-        );
         const detectGalleryItemType = (url = '', explicitType = '') => {
             if (explicitType === 'video' || explicitType === 'image') return explicitType;
             const normalizedUrl = (url || '').trim();
@@ -268,147 +199,28 @@
         };
         const normalizeGalleryItem = (item, fallbackType = '') => {
             if (typeof item === 'string') {
-                const normalizedUrl = sanitizeMediaUrl(item.trim(), '');
                 return {
-                    url: normalizedUrl.url,
+                    url: getSafeImageSrc(item.trim(), ''),
                     label: '',
-                    type: detectGalleryItemType(normalizedUrl.url, fallbackType),
-                    insecureReason: normalizedUrl.flagged ? normalizedUrl.reason : ''
+                    type: detectGalleryItemType(item, fallbackType)
                 };
             }
             if (item && typeof item === 'object') {
-                const safeUrlResult = sanitizeMediaUrl((item.url || '').trim(), '');
-                const url = safeUrlResult.url;
+                const url = getSafeImageSrc((item.url || '').trim(), '');
                 return {
                     url,
                     label: GALLERY_LABELS.includes(item.label) ? item.label : '',
-                    type: detectGalleryItemType(url, item.type || fallbackType),
-                    insecureReason: safeUrlResult.flagged ? safeUrlResult.reason : ''
+                    type: detectGalleryItemType(url, item.type || fallbackType)
                 };
             }
-            return { url: '', label: '', type: detectGalleryItemType('', fallbackType), insecureReason: '' };
-        };
-        const normalizeGlobalMediaItem = (itemId, item) => {
-            const rawItem = item && typeof item === 'object' ? item : {};
-            const safeUrlResult = sanitizeMediaUrl((rawItem.url || '').trim(), '');
-            const safeUrl = safeUrlResult.url;
-            const detectedType = detectGalleryItemType(safeUrl, rawItem.type || '');
-            const embedInfo = detectedType === 'video' ? getVideoEmbedInfo(safeUrl) : null;
-            return {
-                id: String(itemId || ''),
-                url: safeUrl,
-                type: detectedType,
-                category: rawItem.category || '',
-                createdAt: rawItem.createdAt || 0,
-                source: rawItem.source === 'file' ? 'file' : 'url',
-                embedInfo,
-                insecureReason: safeUrlResult.flagged ? safeUrlResult.reason : ''
-            };
-        };
-        const sanitizeAndMigrateHistoricalMedia = async () => {
-            const cleanupEntries = [];
-            const buildSanitizedUrl = async ({ url = '', fallback = '', mediaType = 'image', contextPath = '' } = {}) => {
-                const sanitized = sanitizeMediaUrl(url, fallback, { contextPath });
-                if (!sanitized.flagged) return sanitized;
-                if (sanitized.reason !== 'http_upgraded') {
-                    cleanupEntries.push(createInsecureMediaEntry({
-                        originalUrl: sanitized.originalUrl,
-                        sanitizedUrl: sanitized.url,
-                        contextPath,
-                        reason: sanitized.reason,
-                        status: 'fallback_applied'
-                    }));
-                    return sanitized;
-                }
-                const isValidHttps = await validateHttpsMediaUrl(sanitized.url, mediaType);
-                if (isValidHttps) {
-                    cleanupEntries.push(createInsecureMediaEntry({
-                        originalUrl: sanitized.originalUrl,
-                        sanitizedUrl: sanitized.url,
-                        contextPath,
-                        reason: sanitized.reason,
-                        status: 'https_migrated'
-                    }));
-                    return sanitized;
-                }
-                cleanupEntries.push(createInsecureMediaEntry({
-                    originalUrl: sanitized.originalUrl,
-                    sanitizedUrl: fallback,
-                    contextPath,
-                    reason: 'https_validation_failed',
-                    status: 'fallback_applied'
-                }));
-                return { ...sanitized, url: fallback };
-            };
-
-            const perfilesRef = db.ref('perfiles');
-            const perfilesSnapshot = await perfilesRef.once('value');
-            const perfilesData = perfilesSnapshot.val() || {};
-            const perfilUpdates = {};
-            for (const [profileId, profile] of Object.entries(perfilesData)) {
-                if (!profile || typeof profile !== 'object') continue;
-                const fotos = Array.isArray(profile.fotos) ? profile.fotos : [];
-                for (let i = 0; i < fotos.length; i++) {
-                    const currentUrl = String(fotos[i] || '').trim();
-                    const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: 'image', contextPath: `perfiles/${profileId}/fotos/${i}` });
-                    if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/fotos/${i}`] = nextUrlResult.url;
-                }
-                const galleryBuckets = [
-                    { tag: 'fotos', mediaType: 'image' },
-                    { tag: 'videos', mediaType: 'video' }
-                ];
-                for (const bucket of galleryBuckets) {
-                    const items = Array.isArray(profile?.galeria?.[bucket.tag]) ? profile.galeria[bucket.tag] : [];
-                    for (let i = 0; i < items.length; i++) {
-                        const item = items[i];
-                        if (typeof item === 'string') {
-                            const currentUrl = item.trim();
-                            const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: bucket.mediaType, contextPath: `perfiles/${profileId}/galeria/${bucket.tag}/${i}` });
-                            if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/galeria/${bucket.tag}/${i}`] = nextUrlResult.url;
-                            continue;
-                        }
-                        if (item && typeof item === 'object') {
-                            const currentUrl = String(item.url || '').trim();
-                            const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: bucket.mediaType, contextPath: `perfiles/${profileId}/galeria/${bucket.tag}/${i}/url` });
-                            if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/galeria/${bucket.tag}/${i}/url`] = nextUrlResult.url;
-                        }
-                    }
-                }
-                const prefs = profile?.batallaFotosPreferidas && typeof profile.batallaFotosPreferidas === 'object'
-                    ? profile.batallaFotosPreferidas
-                    : {};
-                for (const [slotId, slotUrl] of Object.entries(prefs)) {
-                    const currentUrl = String(slotUrl || '').trim();
-                    const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: 'image', contextPath: `perfiles/${profileId}/batallaFotosPreferidas/${slotId}` });
-                    if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/batallaFotosPreferidas/${slotId}`] = nextUrlResult.url;
-                }
-            }
-            if (Object.keys(perfilUpdates).length) await perfilesRef.update(perfilUpdates);
-
-            const escenasRef = db.ref('escenasFotos');
-            const escenasSnapshot = await escenasRef.once('value');
-            const escenasData = escenasSnapshot.val() || {};
-            const escenasUpdates = {};
-            for (const [itemId, item] of Object.entries(escenasData)) {
-                if (!item || typeof item !== 'object') continue;
-                const currentUrl = String(item.url || '').trim();
-                const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: item.type || 'image', contextPath: `escenasFotos/${itemId}/url` });
-                if (nextUrlResult.url !== currentUrl) escenasUpdates[`${itemId}/url`] = nextUrlResult.url;
-            }
-            if (Object.keys(escenasUpdates).length) await escenasRef.update(escenasUpdates);
-            await queueInsecureMediaEntries(cleanupEntries);
-            return {
-                perfilesUpdated: Object.keys(perfilUpdates).length,
-                escenasUpdated: Object.keys(escenasUpdates).length,
-                insecureLogged: cleanupEntries.length
-            };
+            return { url: '', label: '', type: detectGalleryItemType('', fallbackType) };
         };
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
         const checkImageUrlIsBroken = async (url = '', {
-            timeoutMs = 5000,
-            retries = 0
+            timeoutMs = 12000,
+            retries = 1
         } = {}) => {
             const normalizedUrl = String(url || '').trim();
             if (!normalizedUrl) return true;
@@ -773,7 +585,6 @@
                         position: relative;
                         width: 100%;
                         height: 100vh;
-                        height: 100dvh;
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -802,20 +613,6 @@
                             0 24px 52px rgba(0, 0, 0, 0.64),
                             0 0 0 3px rgba(83, 55, 27, 0.8),
                             inset 0 0 24px rgba(255, 223, 171, 0.12);
-                    }
-                    .viewer-slide video,
-                    .viewer-slide iframe {
-                        max-width: min(92vw, 1400px);
-                        max-height: calc(100vh - 64px);
-                        width: auto;
-                        height: auto;
-                        border-radius: 24px;
-                        box-shadow: 0 0 40px rgba(34, 211, 238, 0.2);
-                        background: #000;
-                    }
-                    .viewer-slide iframe {
-                        border: 0;
-                        aspect-ratio: 16 / 9;
                     }
                     .viewer-nav {
                         position: fixed;
@@ -905,97 +702,42 @@
                         color: #f5d0fe;
                         background: rgba(192, 38, 211, 0.35);
                     }
-                    @media (max-width: 768px) {
-                        .fullscreen-viewer {
-                            background: rgba(8, 4, 2, 0.985);
-                        }
+                    @media (max-width: 640px) {
                         .viewer-stage {
-                            width: 100vw;
-                            height: 100dvh;
-                            min-height: 100dvh;
-                            padding:
-                                calc(env(safe-area-inset-top, 0px) + 76px)
-                                0
-                                calc(env(safe-area-inset-bottom, 0px) + 116px);
-                        }
-                        .viewer-slide {
-                            width: 100vw;
-                            height: 100dvh;
-                        }
-                        .viewer-slide img,
-                        .viewer-slide video,
-                        .viewer-slide iframe {
-                            width: 100vw;
-                            height: 100dvh;
-                            max-width: none;
-                            max-height: none;
-                            min-width: 100vw;
-                            min-height: 100dvh;
-                            object-fit: contain;
-                            border-radius: 0;
-                            border: 0;
-                            box-shadow: none;
-                        }
-                        .viewer-controls {
-                            top: calc(env(safe-area-inset-top, 0px) + 12px);
-                            left: calc(env(safe-area-inset-left, 0px) + 12px);
-                            gap: 10px;
-                        }
-                        .viewer-control-btn {
-                            min-height: 44px;
-                            padding: 10px 14px;
-                            font-size: 10px;
+                            padding: 20px 16px 106px;
                         }
                         .viewer-close {
-                            top: calc(env(safe-area-inset-top, 0px) + 12px);
-                            right: calc(env(safe-area-inset-right, 0px) + 12px);
-                            width: 44px;
-                            height: 44px;
-                            font-size: 28px;
+                            top: 14px;
+                            right: 16px;
+                            width: 42px;
+                            height: 42px;
                         }
                         .viewer-nav {
-                            bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
-                            width: 48px;
-                            height: 48px;
-                            font-size: 26px;
+                            bottom: 18px;
+                            width: 40px;
+                            height: 40px;
+                            font-size: 22px;
                         }
                         .viewer-nav.prev {
-                            left: calc(env(safe-area-inset-left, 0px) + 12px);
+                            left: 16px;
                         }
                         .viewer-nav.next {
-                            right: calc(env(safe-area-inset-right, 0px) + 12px);
+                            right: 16px;
                         }
                         .viewer-hint {
-                            left: 50%;
-                            bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
-                            max-width: calc(100vw - 132px);
+                            bottom: 20px;
                             padding: 8px 12px;
-                            font-size: 10px;
-                            text-align: center;
-                        }
-                    }
-                    @media (max-width: 640px) {
-                        .viewer-close {
-                            width: 44px;
-                            height: 44px;
-                        }
-                        .viewer-nav {
-                            width: 44px;
-                            height: 44px;
-                            font-size: 24px;
-                        }
-                        .viewer-hint {
-                            padding: 8px 10px;
                             font-size: 10px;
                             max-width: calc(100vw - 120px);
                             text-align: center;
                         }
                         .viewer-controls {
+                            top: 14px;
+                            left: 14px;
                             gap: 8px;
                         }
                         .viewer-control-btn {
-                            min-height: 44px;
-                            padding: 8px 10px;
+                            padding: 7px 10px;
                             font-size: 9px;
                             letter-spacing: 0.16em;
                         }
@@ -1157,8 +899,8 @@
                             <div class="viewer-slide" id="viewer-slide-${index}">
                                 ${itemType === 'video'
                                     ? (embedInfo
-                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
-                                        : `<video src="${foto.url}" controls playsinline></video>`)
+                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" style="width:min(92vw, 1400px); height:min(75vh, 820px); border:0; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
+                                        : `<video src="${foto.url}" controls playsinline style="max-width:min(92vw, 1400px); max-height:calc(100vh - 64px); width:auto; height:auto; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;"></video>`)
                                     : `<img src="${foto.url}" alt="Vista completa ${index + 1}" onerror="${BROKEN_IMAGE_INLINE_HANDLER}" />`
                                 }
                             </div>`;
@@ -1169,22 +911,15 @@
                 <script>
                     const viewer = document.getElementById('fullscreenViewer');
                     const galleryGrid = document.getElementById('galleryGrid');
-                    const viewerStage = document.getElementById('viewerStage');
                     const viewerSlides = Array.from(document.querySelectorAll('.viewer-slide'));
                     const viewerPrevButton = document.getElementById('viewerPrev');
                     const viewerNextButton = document.getElementById('viewerNext');
                     const viewerPlayToggleButton = document.getElementById('viewerPlayToggle');
                     const viewerRandomToggleButton = document.getElementById('viewerRandomToggle');
-                    const viewerStage = document.getElementById('viewerStage') || viewer;
                     let currentViewerIndex = 0;
                     let viewerAutoplay = false;
                     let viewerRandom = false;
                     let viewerAutoplayTimeout = null;
-                    let viewerScrollTop = 0;
-                    let previousBodyOverflow = '';
-                    let previousBodyPosition = '';
-                    let previousBodyTop = '';
-                    let previousBodyWidth = '';
 
                     function resetAddMediaModalFields() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
@@ -1273,21 +1008,12 @@
                         if (viewerNextButton) viewerNextButton.disabled = disableNavigation;
                     }
 
-                    function renderViewerSlide(index, options = {}) {
+                    function renderViewerSlide(index) {
                         if (!viewerSlides.length) return;
-                        const shouldSyncScroll = options.syncScroll !== false;
-                        const scrollBehavior = options.scrollBehavior || 'smooth';
                         currentViewerIndex = Math.max(0, Math.min(index, viewerSlides.length - 1));
                         viewerSlides.forEach(function(slide, slideIndex) {
                             slide.classList.toggle('active', slideIndex === currentViewerIndex);
                         });
-                        if (shouldSyncScroll && viewerStage && isMobileViewerMode()) {
-                            const viewportWidth = getViewerViewportWidth();
-                            viewerStage.scrollTo({
-                                left: currentViewerIndex * viewportWidth,
-                                behavior: scrollBehavior
-                            });
-                        }
                         const activeSlide = viewerSlides[currentViewerIndex];
                         const activeImage = activeSlide ? activeSlide.querySelector('img') : null;
                         const activeVideo = activeSlide ? activeSlide.querySelector('video') : null;
@@ -1320,47 +1046,18 @@
                         scheduleViewerAutoplay();
                     }
 
-                    function syncViewerIndexFromScroll() {
-                        if (!viewerStage || !viewerSlides.length || !isMobileViewerMode() || !viewer.classList.contains('open')) return;
-                        const viewportWidth = getViewerViewportWidth();
-                        const nextIndex = Math.max(0, Math.min(
-                            Math.round(viewerStage.scrollLeft / viewportWidth),
-                            viewerSlides.length - 1
-                        ));
-                        if (nextIndex !== currentViewerIndex) {
-                            renderViewerSlide(nextIndex, { syncScroll: false });
-                        }
-                        clearViewerScrollDebounceTimer();
-                        viewerScrollDebounceTimer = setTimeout(function() {
-                            scheduleViewerAutoplay();
-                        }, 140);
-                    }
-
                     function openFullscreenViewer(index) {
                         if (!viewerSlides.length) return;
                         const parsedIndex = Number(index);
                         if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= viewerSlides.length) return;
-                        viewerScrollTop = window.scrollY || window.pageYOffset || 0;
-                        previousBodyOverflow = document.body.style.overflow;
-                        previousBodyPosition = document.body.style.position;
-                        previousBodyTop = document.body.style.top;
-                        previousBodyWidth = document.body.style.width;
                         viewer.classList.add('open');
                         document.body.style.overflow = 'hidden';
-                        document.body.style.position = 'fixed';
-                        document.body.style.top = '-' + String(viewerScrollTop) + 'px';
-                        document.body.style.width = '100%';
                         renderViewerSlide(parsedIndex);
                     }
                     function closeFullscreenViewer() {
                         viewer.classList.remove('open');
-                        document.body.style.overflow = previousBodyOverflow;
-                        document.body.style.position = previousBodyPosition;
-                        document.body.style.top = previousBodyTop;
-                        document.body.style.width = previousBodyWidth;
-                        window.scrollTo(0, viewerScrollTop);
+                        document.body.style.overflow = '';
                         clearViewerAutoplayTimer();
-                        clearViewerScrollDebounceTimer();
                     }
                     function showNextViewerPhoto(event) {
                         if (event) event.stopPropagation();
@@ -1379,60 +1076,6 @@
                     function toggleViewerRandom(event) {
                         if (event) event.stopPropagation();
                         setViewerRandomState(!viewerRandom);
-                    }
-                    function handleViewerSwipeByDelta(deltaX, deltaY) {
-                        if (viewerSlides.length <= 1) return;
-                        if (Math.abs(deltaX) < viewerSwipeThreshold) return;
-                        if (Math.abs(deltaX) <= Math.abs(deltaY)) return;
-                        if (deltaX < 0) {
-                            showNextViewerPhoto();
-                            return;
-                        }
-                        showPreviousViewerPhoto();
-                    }
-                    function onViewerTouchStart(event) {
-                        if (!viewer.classList.contains('open')) return;
-                        const touch = event.touches && event.touches[0];
-                        if (!touch) return;
-                        viewerTouchStartX = touch.clientX;
-                        viewerTouchStartY = touch.clientY;
-                        viewerTouchCurrentX = touch.clientX;
-                        viewerTouchCurrentY = touch.clientY;
-                        viewerTouchTracking = true;
-                        viewerTouchHorizontalGesture = false;
-                    }
-                    function onViewerTouchMove(event) {
-                        if (!viewerTouchTracking) return;
-                        const touch = event.touches && event.touches[0];
-                        if (!touch) return;
-                        viewerTouchCurrentX = touch.clientX;
-                        viewerTouchCurrentY = touch.clientY;
-                        const deltaX = viewerTouchCurrentX - viewerTouchStartX;
-                        const deltaY = viewerTouchCurrentY - viewerTouchStartY;
-                        if (!viewerTouchHorizontalGesture && Math.abs(deltaX) >= viewerSwipeLockThreshold && Math.abs(deltaX) > Math.abs(deltaY)) {
-                            viewerTouchHorizontalGesture = true;
-                        }
-                        if (viewerTouchHorizontalGesture) {
-                            event.preventDefault();
-                        }
-                    }
-                    function onViewerTouchEnd() {
-                        if (!viewerTouchTracking) return;
-                        handleViewerSwipeByDelta(viewerTouchCurrentX - viewerTouchStartX, viewerTouchCurrentY - viewerTouchStartY);
-                        viewerTouchTracking = false;
-                        viewerTouchHorizontalGesture = false;
-                    }
-                    function onViewerPointerDown(event) {
-                        if (!viewer.classList.contains('open')) return;
-                        if (event.pointerType === 'mouse') return;
-                        viewerPointerStartX = event.clientX;
-                        viewerPointerStartY = event.clientY;
-                        viewerPointerTracking = true;
-                    }
-                    function onViewerPointerUp(event) {
-                        if (!viewerPointerTracking) return;
-                        viewerPointerTracking = false;
-                        handleViewerSwipeByDelta(event.clientX - viewerPointerStartX, event.clientY - viewerPointerStartY);
                     }
                     if (galleryGrid) {
                         galleryGrid.addEventListener('click', function(event) {
@@ -1460,19 +1103,6 @@
                             closeFullscreenViewer();
                         }
                     });
-                    if (viewerStage) {
-                        viewerStage.addEventListener('touchstart', onViewerTouchStart, { passive: true });
-                        viewerStage.addEventListener('touchmove', onViewerTouchMove, { passive: false });
-                        viewerStage.addEventListener('touchend', onViewerTouchEnd, { passive: true });
-                        viewerStage.addEventListener('touchcancel', onViewerTouchEnd, { passive: true });
-                        if (window.PointerEvent && !('ontouchstart' in window)) {
-                            viewerStage.addEventListener('pointerdown', onViewerPointerDown);
-                            viewerStage.addEventListener('pointerup', onViewerPointerUp);
-                            viewerStage.addEventListener('pointercancel', function() {
-                                viewerPointerTracking = false;
-                            });
-                        }
-                    }
                     window.addEventListener('keydown', function(event) {
                         if (!viewer.classList.contains('open')) return;
 
@@ -1505,7 +1135,6 @@
         const App = () => {
             const [carpetaAbierta, setCarpetaAbierta] = React.useState(null);
             const galleryWindowRef = useRef(null);
-            const mediaSanitizationStartedRef = useRef(false);
             const contextMenuRef = useRef(null);
             const [perfiles, setPerfiles] = useState([]);
                 const neonColors = {
@@ -1525,14 +1154,11 @@
 
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
-            const [characterSearchTerm, setCharacterSearchTerm] = useState('');
-            const [selectedCharacterId, setSelectedCharacterId] = useState(null);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
             const [arenaBattleState, setArenaBattleState] = useState({});
             const [arenaGlobalState, setArenaGlobalState] = useState({});
-            const [globalMedia, setGlobalMedia] = useState([]);
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -1552,21 +1178,14 @@
             const [urlInput, setUrlInput] = useState('');
             const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
             const [galleryMediaType, setGalleryMediaType] = useState('image');
-            const [sceneUrlInput, setSceneUrlInput] = useState('');
-            const [sceneFileInput, setSceneFileInput] = useState('');
-            const [sceneCategory, setSceneCategory] = useState('');
-            const [sceneType, setSceneType] = useState('image');
             const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
             const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
             const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
-            const [selectedSceneIndex, setSelectedSceneIndex] = useState(null);
             const [selectedGalleryBucket, setSelectedGalleryBucket] = useState(null);
             const [selectedCharacterBucketIds, setSelectedCharacterBucketIds] = useState([]);
             const [selectedTagLabels, setSelectedTagLabels] = useState([]);
             const [isGalleryPlaying, setIsGalleryPlaying] = useState(false);
             const [isGalleryRandom, setIsGalleryRandom] = useState(false);
-            const [isScenePlaying, setIsScenePlaying] = useState(false);
-            const [isSceneRandom, setIsSceneRandom] = useState(false);
             const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
@@ -1576,9 +1195,7 @@
             const [brokenGalleryUrlDrafts, setBrokenGalleryUrlDrafts] = useState({});
             const [brokenGallerySavingMap, setBrokenGallerySavingMap] = useState({});
             const [brokenGalleryEditingMap, setBrokenGalleryEditingMap] = useState({});
-            const [isCheckingBrokenGallery, setIsCheckingBrokenGallery] = useState(false);
             const galleryPlaybackTimeoutRef = useRef(null);
-            const scenePlaybackTimeoutRef = useRef(null);
 
             const [filters, setFilters] = useState({
                 nacionalidad: 'Todas',
@@ -1862,69 +1479,6 @@ const getInitialCatFormData = () => ({
                     event.target.value = '';
                 }
             };
-            const handleLocalSceneFileUpload = async (event) => {
-                const selectedFile = event.target.files?.[0];
-                if (!selectedFile) return;
-                try {
-                    const dataUrl = await readFileAsDataUrl(selectedFile);
-                    const mimeType = String(selectedFile.type || '').toLowerCase();
-                    const inferredType = mimeType.includes('gif')
-                        ? 'gif'
-                        : mimeType.startsWith('video/')
-                            ? 'video'
-                            : 'image';
-                    setSceneFileInput(dataUrl);
-                    setSceneType(inferredType);
-                } catch (error) {
-                    console.error('Error al cargar archivo local de escena:', error);
-                    alert('No se pudo leer el archivo seleccionado.');
-                } finally {
-                    event.target.value = '';
-                }
-            };
-            const sceneCategoryOptions = useMemo(() => {
-                const existingCategoryLabels = (categorias || [])
-                    .map((category) => String(category?.label || '').trim())
-                    .filter(Boolean);
-                return [...new Set([...existingCategoryLabels, ...SCENE_FREE_CATEGORIES])];
-            }, [categorias]);
-            const submitScenePhoto = async () => {
-                const normalizedUrlInput = String(sceneUrlInput || '').trim();
-                const normalizedFileInput = String(sceneFileInput || '').trim();
-                const finalUrl = normalizedUrlInput || normalizedFileInput;
-                const normalizedCategory = String(sceneCategory || '').trim();
-                const normalizedType = String(sceneType || '').trim();
-
-                if (!finalUrl) {
-                    alert('Ingresá una URL o cargá un archivo para la escena.');
-                    return;
-                }
-                if (!normalizedCategory) {
-                    alert('Seleccioná una categoría para la escena.');
-                    return;
-                }
-                if (!normalizedType) {
-                    alert('Seleccioná el tipo de escena.');
-                    return;
-                }
-
-                try {
-                    await db.ref('escenasFotos').push({
-                        url: finalUrl,
-                        categoria: normalizedCategory,
-                        type: normalizedType,
-                        createdAt: firebase.database.ServerValue.TIMESTAMP
-                    });
-                    setSceneUrlInput('');
-                    setSceneFileInput('');
-                    setSceneCategory('');
-                    setSceneType('image');
-                    alert('¡Escena guardada correctamente!');
-                } catch (error) {
-                    console.error('Error al guardar escena en Firebase:', error);
-                    alert('No se pudo guardar la escena. Probá de nuevo.');
-                }
-            };
             const handleDelete = async (id, e) => {
                 e.stopPropagation(); // Esto es para que no se abra la foto cuando hacés click en la cruz
                 if(confirm('¿Estás seguro de que querés eliminar esto, corazón?')) {
@@ -1962,19 +1516,6 @@ const getInitialCatFormData = () => ({
             }, [editingId, formData.nombre, formData.profesion, formData.galeria?.fotos, formData.galeria?.videos, formData.batallaFotosPreferidas]);
 
             useEffect(() => {
-                if (!mediaSanitizationStartedRef.current) {
-                    mediaSanitizationStartedRef.current = true;
-                    sanitizeAndMigrateHistoricalMedia()
-                        .then((summary) => {
-                            if (summary.insecureLogged || summary.perfilesUpdated || summary.escenasUpdated) {
-                                console.info('Migración de medios HTTP completada:', summary);
-                            }
-                        })
-                        .catch((error) => {
-                            console.error('No se pudo completar la migración de medios HTTP:', error);
-                        });
-                }
-
                 const handleMessage = async (event) => {
                     if (event.data.type === 'ADD_IMAGE') {
                         const { url, id, label, mediaType } = event.data;
@@ -2114,14 +1655,6 @@ const getInitialCatFormData = () => ({
                 arenaGlobalRef.on('value', (snapshot) => {
                     setArenaGlobalState(snapshot.val() || {});
                 });
-                const escenasFotosRef = db.ref('escenasFotos');
-                escenasFotosRef.on('value', (snapshot) => {
-                    const data = snapshot.val() || {};
-                    const normalizedMedia = Object.entries(data)
-                        .map(([itemId, item]) => normalizeGlobalMediaItem(itemId, item))
-                        .filter((item) => item.url);
-                    setGlobalMedia(normalizedMedia);
-                });
 
                 return () => {
                     window.removeEventListener('message', handleMessage);
@@ -2129,7 +1662,6 @@ const getInitialCatFormData = () => ({
                     categoriasRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
-                    escenasFotosRef.off();
                 };
             }, []);
 
@@ -2208,7 +1740,7 @@ const getInitialCatFormData = () => ({
                 }, {});
             }, [perfiles, categorias]);
             const allGalleryPhotos = useMemo(() => {
-                const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
+                return (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -2255,32 +1787,7 @@ const getInitialCatFormData = () => ({
                         })
                         .filter(Boolean);
                 });
-                const sharedGlobalMediaPhotos = (globalMedia || [])
-                    .map((item, index) => {
-                        if (!item?.url) return null;
-                        const type = detectGalleryItemType(item.url, item.type || '');
-                        const embedInfo = type === 'video' ? (item.embedInfo || getVideoEmbedInfo(item.url)) : null;
-                        return {
-                            id: `escenasFotos-${item.id || index}`,
-                            url: item.url,
-                            label: '',
-                            type,
-                            isGif: type === 'image' && isGifUrl(item.url),
-                            nombre: item.category ? `Escena · ${item.category}` : 'Escena global',
-                            profesion: item.source === 'file' ? 'Escena (archivo)' : 'Escena (url)',
-                            nacionalidad: '',
-                            fotoPerfil: item.url,
-                            profileId: null,
-                            sourceTag: 'escenasFotos',
-                            sourceIndex: index,
-                            createdAt: item.createdAt || 0,
-                            embedInfo
-                        };
-                    })
-                    .filter(Boolean);
-
-                return [...profileGalleryPhotos, ...sharedGlobalMediaPhotos];
-            }, [perfiles, globalMedia]);
+            }, [perfiles]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
@@ -2397,38 +1904,6 @@ const getInitialCatFormData = () => ({
             const selectedGalleryPhoto = selectedGalleryIndex === null
                 ? null
                 : filteredGalleryPhotos[clampIndex(selectedGalleryIndex, filteredGalleryPhotos.length)] || null;
-            const sceneMediaPhotos = useMemo(() => {
-                const rawMedia = Array.isArray(globalMedia)
-                    ? globalMedia
-                    : globalMedia && typeof globalMedia === 'object'
-                        ? Object.values(globalMedia)
-                        : [];
-
-                return rawMedia
-                    .map((item, index) => {
-                        const candidate = item && typeof item === 'object' ? item : { url: item };
-                        const normalizedCandidate = candidate?.media && typeof candidate.media === 'object'
-                            ? { ...candidate.media, label: candidate.label || candidate.media.label || '', type: candidate.type || candidate.media.type || '' }
-                            : candidate;
-                        const normalizedItem = normalizeGalleryItem(normalizedCandidate, candidate.type || normalizedCandidate.type || '');
-                        if (!normalizedItem.url) return null;
-                        return {
-                            id: candidate.id || candidate.firebaseId || `scene-${index}-${normalizedItem.url}`,
-                            url: normalizedItem.url,
-                            label: normalizedItem.label || '',
-                            type: normalizedItem.type,
-                            isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
-                            nombre: candidate.nombre || candidate.title || candidate.sceneName || candidate.autor || 'Escena',
-                            profesion: candidate.profesion || candidate.category || 'Escenas/Fotos',
-                            nacionalidad: candidate.nacionalidad || '',
-                            fotoPerfil: normalizedItem.url
-                        };
-                    })
-                    .filter(Boolean);
-            }, [globalMedia]);
-            const selectedScenePhoto = selectedSceneIndex === null
-                ? null
-                : sceneMediaPhotos[clampIndex(selectedSceneIndex, sceneMediaPhotos.length)] || null;
             const brokenGalleryPhotos = useMemo(() => {
                 return allGalleryPhotos.filter((photo) => photo.type === 'image' && brokenGalleryMap[photo.id]);
             }, [allGalleryPhotos, brokenGalleryMap]);
@@ -2470,9 +1945,6 @@ const getInitialCatFormData = () => ({
                 if (activeTab !== 'GALERIA') {
                     setSelectedGalleryBucket(null);
                     setSelectedGalleryIndex(null);
-                }
-                if (activeTab !== 'ESCENAS_FOTOS') {
-                    setSelectedSceneIndex(null);
                 }
             }, [activeTab]);
 
@@ -2527,47 +1999,6 @@ const getInitialCatFormData = () => ({
                 }
             }, [selectedGalleryIndex]);
             useEffect(() => {
-                if (selectedSceneIndex === null) {
-                    setIsScenePlaying(false);
-                    setIsSceneRandom(false);
-                }
-            }, [selectedSceneIndex]);
-            useEffect(() => {
-                if (selectedSceneIndex === null) return;
-
-                if (!sceneMediaPhotos.length) {
-                    setSelectedSceneIndex(null);
-                    return;
-                }
-
-                if (selectedSceneIndex >= sceneMediaPhotos.length) {
-                    setSelectedSceneIndex(0);
-                }
-            }, [sceneMediaPhotos, selectedSceneIndex]);
-            useEffect(() => {
-                if (selectedSceneIndex === null) return;
-
-                const handleSceneKeydown = (event) => {
-                    if (event.key === 'Escape') {
-                        setSelectedSceneIndex(null);
-                        return;
-                    }
-
-                    if (!sceneMediaPhotos.length) return;
-
-                    if (event.key === 'ArrowRight') {
-                        setSelectedSceneIndex((current) => clampIndex((current ?? 0) + 1, sceneMediaPhotos.length));
-                    }
-
-                    if (event.key === 'ArrowLeft') {
-                        setSelectedSceneIndex((current) => clampIndex((current ?? 0) - 1, sceneMediaPhotos.length));
-                    }
-                };
-
-                window.addEventListener('keydown', handleSceneKeydown);
-                return () => window.removeEventListener('keydown', handleSceneKeydown);
-            }, [sceneMediaPhotos.length, selectedSceneIndex]);
-            useEffect(() => {
                 if (!contextMenuOpen) return;
 
                 const handleOutsideClick = (event) => {
@@ -2591,18 +2022,15 @@ const getInitialCatFormData = () => ({
                 };
             }, [contextMenuOpen]);
             useEffect(() => {
-                if (!isBrokenGalleryModalOpen) return;
                 let isCancelled = false;
                 const imagePhotos = allGalleryPhotos.filter((photo) => photo.type === 'image' && photo.url);
 
                 if (!imagePhotos.length) {
                     setBrokenGalleryMap({});
-                    setIsCheckingBrokenGallery(false);
                     return;
                 }
 
                 const run = async () => {
-                    setIsCheckingBrokenGallery(true);
                     const concurrency = 8;
                     const results = [];
 
@@ -2624,14 +2052,11 @@ const getInitialCatFormData = () => ({
                         return acc;
                     }, {});
                     setBrokenGalleryMap(nextMap);
-                    if (!isCancelled) setIsCheckingBrokenGallery(false);
                 };
 
                 run();
-                return () => {
-                    isCancelled = true;
-                };
-            }, [isBrokenGalleryModalOpen, allGalleryPhotos]);
+                return () => { isCancelled = true; };
+            }, [allGalleryPhotos]);
             useEffect(() => {
                 if (!isBrokenGalleryModalOpen) return;
                 const nextDrafts = brokenGalleryPhotos.reduce((acc, photo) => {
@@ -2663,35 +2088,10 @@ const getInitialCatFormData = () => ({
                     }
                 };
             }, [isGalleryPlaying, selectedGalleryPhoto, filteredGalleryPhotos, isGalleryRandom, galleryPlaybackSeconds]);
-            useEffect(() => {
-                if (scenePlaybackTimeoutRef.current) {
-                    clearTimeout(scenePlaybackTimeoutRef.current);
-                    scenePlaybackTimeoutRef.current = null;
-                }
-
-                if (!isScenePlaying || !selectedScenePhoto) return;
-                if (selectedScenePhoto.type === 'video') return;
-
-                const timeoutDuration = galleryPlaybackSeconds * 1000;
-                scenePlaybackTimeoutRef.current = setTimeout(() => {
-                    setSelectedSceneIndex((current) => getNextPlayableIndex(current, sceneMediaPhotos, isSceneRandom));
-                }, timeoutDuration);
-
-                return () => {
-                    if (scenePlaybackTimeoutRef.current) {
-                        clearTimeout(scenePlaybackTimeoutRef.current);
-                        scenePlaybackTimeoutRef.current = null;
-                    }
-                };
-            }, [isScenePlaying, selectedScenePhoto, sceneMediaPhotos, isSceneRandom, galleryPlaybackSeconds]);
 
             const openGalleryViewer = (index, autoplay = false) => {
                 setSelectedGalleryIndex(index);
                 setIsGalleryPlaying(autoplay);
-            };
-            const openSceneViewer = (index, autoplay = false) => {
-                setSelectedSceneIndex(index);
-                setIsScenePlaying(autoplay);
             };
             const addCharacterToGallerySelection = (bucketId) => {
                 if (!bucketId) return;
@@ -2715,14 +2115,8 @@ const getInitialCatFormData = () => ({
                 setIsGalleryPlaying(false);
                 setSelectedGalleryIndex(null);
             };
-            const closeSceneViewer = () => {
-                setIsScenePlaying(false);
-                setSelectedSceneIndex(null);
-            };
             const showNextGalleryPhoto = () => setSelectedGalleryIndex((current) => getNextPlayableIndex(current, filteredGalleryPhotos, isGalleryRandom));
             const showPreviousGalleryPhoto = () => setSelectedGalleryIndex((current) => clampIndex((current ?? 0) - 1, filteredGalleryPhotos.length));
-            const showNextScenePhoto = () => setSelectedSceneIndex((current) => getNextPlayableIndex(current, sceneMediaPhotos, isSceneRandom));
-            const showPreviousScenePhoto = () => setSelectedSceneIndex((current) => clampIndex((current ?? 0) - 1, sceneMediaPhotos.length));
             const saveSelectedGalleryLabel = async () => {
                 if (!selectedGalleryPhoto?.profileId || !selectedGalleryPhoto?.sourceTag || !Number.isInteger(selectedGalleryPhoto?.sourceIndex)) return;
                 try {
@@ -3849,32 +3243,6 @@ const saveProfile = (e) => {
 
                 return sortDirection === 'asc' ? result : -result;
             });
-            const filteredCharacterProfiles = useMemo(() => {
-                const normalizedSearchTerm = normalizeSearchValue(characterSearchTerm);
-                return (perfiles || []).filter((profile) => {
-                    const normalizedName = normalizeSearchValue(profile?.nombre || '');
-                    if (!normalizedSearchTerm) return Boolean(normalizedName);
-                    return normalizedName.includes(normalizedSearchTerm);
-                });
-            }, [perfiles, characterSearchTerm]);
-            const selectedCharacterProfile = useMemo(() => (
-                (perfiles || []).find((profile) => profile?.firebaseId === selectedCharacterId) || null
-            ), [perfiles, selectedCharacterId]);
-            const selectedCharacterRankingPosition = useMemo(() => {
-                if (!selectedCharacterProfile?.firebaseId) return null;
-                const rankingIndex = sortedProfiles.findIndex((profile) => profile?.firebaseId === selectedCharacterProfile.firebaseId);
-                return rankingIndex >= 0 ? rankingIndex + 1 : null;
-            }, [sortedProfiles, selectedCharacterProfile]);
-
-            useEffect(() => {
-                if (!filteredCharacterProfiles.length) {
-                    if (selectedCharacterId !== null) setSelectedCharacterId(null);
-                    return;
-                }
-                if (!selectedCharacterId || !filteredCharacterProfiles.some((profile) => profile?.firebaseId === selectedCharacterId)) {
-                    setSelectedCharacterId(filteredCharacterProfiles[0].firebaseId);
-                }
-            }, [filteredCharacterProfiles, selectedCharacterId]);
             return (
                 <div className="app-space-theme flex h-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
                     {isSidebarOpen && (
@@ -3895,12 +3263,10 @@ const saveProfile = (e) => {
                         <nav className="flex-1 space-y-2 mb-8">
                             {[
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
-                                { id: 'PERSONAJE', icon: 'user-round-search', label: 'Personaje' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
-                                { id: 'GALERIA', icon: 'images', label: 'Galería' },
-                                { id: 'ESCENAS_FOTOS', icon: 'gallery-horizontal', label: 'Escenas/Fotos' }
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -3909,9 +3275,6 @@ const saveProfile = (e) => {
                                         setSelectedCategory(null);
                                         setSelectedGalleryBucket(null);
                                         setSelectedGalleryIndex(null);
-                                        setSelectedCharacterBucketIds([]);
-                                        setSelectedTagLabels([]);
-                                        setGalleryFilterLabel('INICIAL');
                                     }}
                                     className={`btn-metal sidebar-nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'is-active text-[#ecfeff]' : 'text-slate-900'}`}
                                 >
@@ -4048,136 +3411,6 @@ const saveProfile = (e) => {
                                         </div>
                                     );
                                 })}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'PERSONAJE' && !selectedCategory && (
-                        <div className="space-y-8 animate-in fade-in duration-500">
-                            <div>
-                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personaje</h2>
-                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
-                                    Buscador y ficha rápida de cada perfil
-                                </p>
-                            </div>
-                            <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-8">
-                                <section className="theme-surface-card gothic-frame gothic-frame--secondary rounded-2xl p-5 space-y-4 h-fit">
-                                    <label htmlFor="characterSearchInput" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Buscar personaje</label>
-                                    <div className="relative">
-                                        <LucideIcon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                                        <input
-                                            id="characterSearchInput"
-                                            type="text"
-                                            value={characterSearchTerm}
-                                            onChange={(event) => setCharacterSearchTerm(event.target.value)}
-                                            placeholder="Nombre del personaje..."
-                                            className="w-full bg-slate-950/80 border border-slate-700 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400"
-                                        />
-                                    </div>
-                                    <div className="max-h-[520px] overflow-y-auto space-y-2 pr-1">
-                                        {filteredCharacterProfiles.length ? filteredCharacterProfiles.map((profile) => {
-                                            const isActive = selectedCharacterId === profile.firebaseId;
-                                            return (
-                                                <button
-                                                    key={profile.firebaseId}
-                                                    type="button"
-                                                    onClick={() => setSelectedCharacterId(profile.firebaseId)}
-                                                    className={`w-full text-left rounded-xl border px-3 py-3 transition-all ${isActive ? 'border-cyan-300 bg-cyan-500/12 shadow-[0_0_14px_rgba(34,211,238,0.2)]' : 'border-slate-700 bg-slate-900/55 hover:border-slate-500'}`}
-                                                >
-                                                    <p className="font-bold text-sm text-slate-100 truncate">{profile.nombre || 'Sin nombre'}</p>
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--metal-gold)] mt-1">{profile.profesion || 'Sin profesión'}</p>
-                                                </button>
-                                            );
-                                        }) : (
-                                            <p className="text-xs text-slate-400 py-3">No hay resultados para esa búsqueda.</p>
-                                        )}
-                                    </div>
-                                </section>
-
-                                <section className="theme-surface-card gothic-frame gothic-frame--ornate rounded-2xl p-6 md:p-8">
-                                    {selectedCharacterProfile ? (
-                                        <div className="space-y-7">
-                                            <div className="flex flex-col lg:flex-row gap-6">
-                                                <img
-                                                    src={getSafeImageSrc(selectedCharacterProfile.fotos?.[0], 'https://via.placeholder.com/400x500')}
-                                                    alt={selectedCharacterProfile.nombre || 'Perfil'}
-                                                    className="w-full lg:w-72 h-80 rounded-2xl object-cover border border-slate-700/70 bg-slate-950/70"
-                                                    onError={applyCryingEmojiFallback}
-                                                />
-                                                <div className="flex-1 space-y-4">
-                                                    <div>
-                                                        <h3 className="text-3xl font-black italic text-white tracking-tight">{selectedCharacterProfile.nombre || 'Sin nombre'}</h3>
-                                                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--metal-gold)] mt-1">{selectedCharacterProfile.profesion || 'Sin profesión'}</p>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Ranking</p>
-                                                            <p className="text-lg font-black text-white">{selectedCharacterRankingPosition ? `#${selectedCharacterRankingPosition}` : '—'}</p>
-                                                        </div>
-                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Edad</p>
-                                                            <p className="text-lg font-black text-white">{calcularEdad(selectedCharacterProfile.fechaNacimiento) || '—'}</p>
-                                                        </div>
-                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Altura</p>
-                                                            <p className="text-lg font-black text-white">{getProfileHeightLabel(selectedCharacterProfile) || '—'}</p>
-                                                        </div>
-                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">G2 Score</p>
-                                                            <p className="text-lg font-black text-[var(--metal-gold)]">{calcularPromedio(selectedCharacterProfile)}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                        <div className="rounded-xl border border-slate-700 bg-slate-950/55 px-3 py-3">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Rostro</p>
-                                                            <p className="text-xl font-black text-white">{getRostroScore(selectedCharacterProfile).toFixed(0)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border border-slate-700 bg-slate-950/55 px-3 py-3">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Cuerpo</p>
-                                                            <p className="text-xl font-black text-white">{getCuerpoScore(selectedCharacterProfile).toFixed(0)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border border-slate-700 bg-slate-950/55 px-3 py-3">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Actitud</p>
-                                                            <p className="text-xl font-black text-white">{getActitudScore(selectedCharacterProfile).toFixed(0)}</p>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openProfileEditor(selectedCharacterProfile)}
-                                                        className="btn-metal btn-metal--gold px-5 py-3 rounded-2xl text-xs inline-flex items-center gap-2"
-                                                    >
-                                                        <LucideIcon name="square-pen" size={14} /> Editar personaje
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                                {(() => {
-                                                    const matchups = getMatchupNamesForProfile(selectedCharacterProfile.firebaseId);
-                                                    return (
-                                                        <>
-                                                            <div className="theme-surface-soft rounded-2xl border theme-border-secondary p-4">
-                                                                <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">A quién le ganó</h4>
-                                                                <p className="text-xs text-slate-400 mt-2">
-                                                                    {matchups.wins.length ? matchups.wins.join(' · ') : 'Sin victorias registradas.'}
-                                                                </p>
-                                                            </div>
-                                                            <div className="theme-surface-soft rounded-2xl border theme-border-secondary p-4">
-                                                                <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-300">Contra quién perdió</h4>
-                                                                <p className="text-xs text-slate-400 mt-2">
-                                                                    {matchups.losses.length ? matchups.losses.join(' · ') : 'Sin derrotas registradas.'}
-                                                                </p>
-                                                            </div>
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="py-20 text-center">
-                                            <p className="text-sm text-slate-300">No hay personaje seleccionado.</p>
-                                        </div>
-                                    )}
-                                </section>
                             </div>
                         </div>
                     )}
@@ -4370,7 +3603,7 @@ const saveProfile = (e) => {
                         title="Ver y corregir fotos rotas"
                     >
                         <span className="text-sm leading-none">💔</span>
-                        Rotas ({isCheckingBrokenGallery ? '...' : brokenGalleryPhotos.length})
+                        Rotas ({brokenGalleryPhotos.length})
                     </button>
                 </div>
 
@@ -4639,117 +3872,6 @@ const saveProfile = (e) => {
                 </>
             )}
 
-            {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
-                <div className="space-y-10 animate-in fade-in duration-500">
-                    <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
-                        <div>
-                            <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Escenas/Fotos</h2>
-                            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
-                                Archivo global de escenas ({sceneMediaPhotos.length} elementos)
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => openSceneViewer(0, true)}
-                                disabled={!sceneMediaPhotos.length}
-                                className="btn-metal btn-metal--gold inline-flex items-center gap-2 px-5 py-3 rounded-full text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                                <LucideIcon name="play" size={14} />
-                                Play Escenas
-                            </button>
-                            <div className="inline-flex items-center gap-2 rounded-full border theme-border-secondary bg-slate-950/80 px-3 py-2">
-                                <label htmlFor="scenePlaybackSeconds" className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-300">
-                                    Duración
-                                </label>
-                                <select
-                                    id="scenePlaybackSeconds"
-                                    className="filter-select"
-                                    value={galleryPlaybackSeconds}
-                                    onChange={(event) => setGalleryPlaybackSeconds(Number(event.target.value))}
-                                >
-                                    {[3, 5, 7, 10].map((seconds) => (
-                                        <option key={seconds} value={seconds}>{seconds} segundos</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {!sceneMediaPhotos.length ? (
-                        <div className="py-24 border border-dashed theme-border-secondary rounded-2xl text-center bg-slate-950/30">
-                            <div className="w-20 h-20 rounded-full bg-slate-900 border theme-border-secondary flex items-center justify-center mx-auto mb-6">
-                                <LucideIcon name="image-off" size={28} className="text-slate-600" />
-                            </div>
-                            <h3 className="font-title text-xl font-black italic text-white tracking-[0.06em]">No hay escenas para mostrar</h3>
-                            <p className="font-title text-xs font-medium text-slate-500 tracking-[0.06em] mt-3">
-                                Cargá elementos en <code>globalMedia</code> para visualizar esta sección.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
-                            {sceneMediaPhotos.map((photo, index) => {
-                                const labelStyle = getGalleryLabelStyle(photo.label);
-                                return (
-                                    <button
-                                        key={photo.id}
-                                        type="button"
-                                        onClick={() => openSceneViewer(index)}
-                                        className="group text-left theme-surface-card border theme-border-secondary rounded-[2.4rem] overflow-hidden hover:border-[color:color-mix(in_srgb,var(--metal-gold)_40%,transparent)] hover:shadow-[0_0_30px_rgba(34,211,238,0.12)] transition-all duration-500 focus:outline-none focus:ring-2 focus:ring-[var(--glow-gold)] focus:ring-offset-2 focus:ring-offset-[#020617]"
-                                    >
-                                        <div className="aspect-[4/5] relative overflow-hidden bg-slate-950">
-                                            {photo.type === 'video' ? (() => {
-                                                const embedInfo = getVideoEmbedInfo(photo.url);
-                                                if (embedInfo) {
-                                                    return (
-                                                        <div className="w-full h-full bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.3),_rgba(15,23,42,0.95))] flex flex-col items-center justify-center gap-4 p-6 text-center">
-                                                            <div className="w-16 h-16 rounded-full border border-[var(--metal-gold)]/40 bg-slate-950/70 flex items-center justify-center text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] text-2xl">▶</div>
-                                                            <div>
-                                                                <p className="font-title text-sm font-semibold tracking-[0.1em] text-white">Video</p>
-                                                                <p className="font-title text-[10px] font-medium tracking-[0.08em] text-slate-400 mt-2">{embedInfo.provider}</p>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }
-                                                return <video src={photo.url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" muted playsInline preload="metadata" />;
-                                            })() : <img src={getSafeImageSrc(photo.url, CRYING_EMOJI_FALLBACK)} alt={`${photo.nombre} - ${photo.label || 'escena'}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" onError={applyCryingEmojiFallback} />}
-                                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-cyan-950/40 via-transparent to-transparent" />
-                                            <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-[#020617] via-[#020617]/60 to-transparent">
-                                                <div className="flex items-end justify-between gap-3">
-                                                    <div>
-                                                        <p className="text-lg font-black italic text-white tracking-tighter leading-none">{photo.nombre}</p>
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--metal-gold)] mt-2">{photo.profesion}</p>
-                                                        {photo.nacionalidad && (
-                                                            <p className="font-title text-[9px] font-medium tracking-[0.06em] text-slate-400 mt-1">{photo.nacionalidad}</p>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-col items-end gap-2">
-                                                        <div className="px-3 py-1 rounded-full border theme-border-secondary bg-slate-950/85 text-[9px] font-black uppercase tracking-[0.3em] text-slate-200">
-                                                            {photo.type === 'video' ? 'VIDEO' : (photo.isGif ? 'GIF' : 'IMG')}
-                                                        </div>
-                                                        <div
-                                                            className="min-w-[46px] h-[46px] rounded-2xl border flex items-center justify-center text-sm font-black uppercase shadow-xl"
-                                                            style={{
-                                                                background: labelStyle.bg,
-                                                                borderColor: labelStyle.border,
-                                                                color: labelStyle.text,
-                                                                boxShadow: `0 0 16px ${labelStyle.glow}`
-                                                            }}
-                                                        >
-                                                            {photo.label || '—'}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            )}
-
             {selectedGalleryPhoto && (
                 <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeGalleryViewer}>
                     <button
@@ -4927,132 +4049,6 @@ const saveProfile = (e) => {
                 </div>
             )}
 
-            {selectedScenePhoto && (
-                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeSceneViewer}>
-                    <button
-                        type="button"
-                        onClick={closeSceneViewer}
-                        className="btn-metal btn-metal--danger absolute top-4 right-4 sm:top-6 sm:right-6 w-12 h-12 rounded-full flex items-center justify-center"
-                        aria-label="Cerrar visor de escena"
-                    >
-                        <span className="text-[26px] leading-none font-black">✕</span>
-                    </button>
-
-                    <div className="w-full max-w-6xl max-h-full flex flex-col gap-4" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex items-center justify-between gap-4 px-1 sm:px-2">
-                            <div>
-                                <p className="text-2xl sm:text-3xl font-black italic text-white tracking-tighter">{selectedScenePhoto.nombre}</p>
-                                <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-[var(--metal-gold)] mt-2">{selectedScenePhoto.profesion}{selectedScenePhoto.nacionalidad ? ` · ${selectedScenePhoto.nacionalidad}` : ''}</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                {sceneMediaPhotos.length > 1 && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsScenePlaying((prev) => !prev)}
-                                            className="btn-metal btn-metal--gold px-4 py-2 rounded-full text-[10px]"
-                                        >
-                                            {isScenePlaying ? 'Pause' : 'Play'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsSceneRandom((prev) => !prev)}
-                                            className={`btn-metal px-4 py-2 rounded-full text-[10px] transition-all ${isSceneRandom ? 'btn-metal--gold is-active text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
-                                        >
-                                            Aleatorio {isSceneRandom ? 'ON' : 'OFF'}
-                                        </button>
-                                    </>
-                                )}
-                                <div className="px-3 py-2 rounded-full border theme-border-secondary bg-slate-950/85 text-[10px] font-black uppercase tracking-[0.3em] text-slate-200">
-                                    {selectedScenePhoto.type === 'video' ? 'VIDEO' : (selectedScenePhoto.isGif ? 'GIF' : 'IMG')}
-                                </div>
-                                <div
-                                    className="min-w-[52px] h-[52px] rounded-2xl border flex items-center justify-center text-base font-black uppercase shadow-xl"
-                                    style={{
-                                        background: getGalleryLabelStyle(selectedScenePhoto.label).bg,
-                                        borderColor: getGalleryLabelStyle(selectedScenePhoto.label).border,
-                                        color: getGalleryLabelStyle(selectedScenePhoto.label).text,
-                                        boxShadow: `0 0 20px ${getGalleryLabelStyle(selectedScenePhoto.label).glow}`
-                                    }}
-                                >
-                                    {selectedScenePhoto.label || '—'}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="relative flex-1 min-h-0 rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
-                            {selectedScenePhoto.type === 'video' ? (() => {
-                                const embedInfo = getVideoEmbedInfo(selectedScenePhoto.url);
-                                if (embedInfo) {
-                                    return (
-                                        <iframe
-                                            src={embedInfo.src}
-                                            title={`${selectedScenePhoto.nombre} video`}
-                                            className="w-full h-[calc(100vh-14rem)] bg-black"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                            allowFullScreen
-                                        />
-                                    );
-                                }
-                                return (
-                                    <video
-                                        src={selectedScenePhoto.url}
-                                        controls
-                                        playsInline
-                                        autoPlay={isScenePlaying}
-                                        onEnded={() => {
-                                            if (isScenePlaying && sceneMediaPhotos.length > 1) {
-                                                showNextScenePhoto();
-                                            }
-                                        }}
-                                        onError={() => {
-                                            if (sceneMediaPhotos.length > 1) {
-                                                showNextScenePhoto();
-                                            }
-                                        }}
-                                        className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
-                                    />
-                                );
-                            })() : (
-                                <img
-                                    src={getSafeImageSrc(selectedScenePhoto.url, CRYING_EMOJI_FALLBACK)}
-                                    alt={`${selectedScenePhoto.nombre} - ${selectedScenePhoto.label || 'escena'}`}
-                                    className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
-                                    onError={(e) => {
-                                        applyCryingEmojiFallback(e);
-                                        if (sceneMediaPhotos.length > 1) {
-                                            showNextScenePhoto();
-                                        }
-                                    }}
-                                />
-                            )}
-                            {sceneMediaPhotos.length > 1 && (
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={(event) => { event.stopPropagation(); showPreviousScenePhoto(); }}
-                                        className="absolute left-4 bottom-4 sm:left-6 sm:bottom-6 w-10 h-10 rounded-full border theme-border-secondary bg-slate-900/90 text-white flex items-center justify-center hover:border-[var(--metal-gold)] hover:text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] transition-all shadow-lg shadow-black/40"
-                                        aria-label="Escena anterior"
-                                    >
-                                        <span className="text-[20px] leading-none font-black">←</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={(event) => { event.stopPropagation(); showNextScenePhoto(); }}
-                                        className="absolute right-4 bottom-4 sm:right-6 sm:bottom-6 w-10 h-10 rounded-full border theme-border-secondary bg-slate-900/90 text-white flex items-center justify-center hover:border-[var(--metal-gold)] hover:text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] transition-all shadow-lg shadow-black/40"
-                                        aria-label="Escena siguiente"
-                                    >
-                                        <span className="text-[20px] leading-none font-black">→</span>
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400 px-1 sm:px-2">
-                            {selectedSceneIndex + 1} de {sceneMediaPhotos.length} archivos visibles
-                        </p>
-                    </div>
-                </div>
-            )}
-
             {isBrokenGalleryModalOpen && (
                 <div className="fixed inset-0 z-[130] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-3 sm:p-6" onClick={() => setIsBrokenGalleryModalOpen(false)}>
                     <div className="w-full max-w-[min(1200px,100%)] max-h-full theme-surface-card border theme-border-secondary rounded-[2rem] p-4 sm:p-6 overflow-hidden" onClick={(event) => event.stopPropagation()}>
@@ -5060,9 +4056,7 @@ const saveProfile = (e) => {
                             <div>
                                 <p className="text-2xl font-black italic text-white tracking-tighter">Fotos rotas</p>
                                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--metal-gold)] mt-2">
-                                    {isCheckingBrokenGallery
-                                        ? 'Analizando enlaces...'
-                                        : `${brokenGalleryPhotos.length} enlace${brokenGalleryPhotos.length === 1 ? '' : 's'} sin vista`}
+                                    {brokenGalleryPhotos.length} enlace{brokenGalleryPhotos.length === 1 ? '' : 's'} sin vista
                                 </p>
                             </div>
                             <button
@@ -5160,20 +4154,6 @@ const saveProfile = (e) => {
                     </div>
                 </div>
             )}
-        </div>
-    )}
-
-    {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
-        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
-            <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Escenas/Fotos</h2>
-            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
-                Nuevo bloque preparado para escenas multimedia sin afectar los tabs existentes.
-            </p>
-            <div className="mt-8">
-                <button type="button" className="btn-metal btn-metal--silver px-6 py-3 rounded-2xl text-xs text-slate-900">
-                    Configurar contenido
-                </button>
-            </div>
         </div>
     )}
 
@@ -5652,69 +4632,68 @@ const saveProfile = (e) => {
                 </tbody>
             </table>
 
+            {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
+                const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+                return (
+                    <div
+                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                    >
+                        <div
+                            className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between gap-4 mb-6">
+                                <div>
+                                    <h3 className="font-title text-xl font-black text-white tracking-wide">
+                                        {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
+                                    </h3>
+                                    <p className="text-xs text-slate-300 mt-1">
+                                        Detalle de enfrentamientos ganados y perdidos.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                                    className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
+                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
+                                    {breakdown.wins.length ? (
+                                        <ul className="space-y-2">
+                                            {breakdown.wins.map((name, idx) => (
+                                                <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
+                                    )}
+                                </div>
+
+                                <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
+                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
+                                    {breakdown.losses.length ? (
+                                        <ul className="space-y-2">
+                                            {breakdown.losses.map((name, idx) => (
+                                                <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     )}
-
-    {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
-        const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
-        return (
-            <div
-                className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-                onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-            >
-                <div
-                    className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
-                    onClick={(event) => event.stopPropagation()}
-                >
-                    <div className="flex items-start justify-between gap-4 mb-6">
-                        <div>
-                            <h3 className="font-title text-xl font-black text-white tracking-wide">
-                                {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
-                            </h3>
-                            <p className="text-xs text-slate-300 mt-1">
-                                Detalle de enfrentamientos ganados y perdidos.
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                            className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
-                        >
-                            Cerrar
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
-                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
-                            {breakdown.wins.length ? (
-                                <ul className="space-y-2">
-                                    {breakdown.wins.map((name, idx) => (
-                                        <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
-                            )}
-                        </div>
-
-                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
-                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
-                            {breakdown.losses.length ? (
-                                <ul className="space-y-2">
-                                    {breakdown.losses.map((name, idx) => (
-                                        <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    })()}
 
     {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
     {activeTab === 'CATEGORIAS' && !selectedCategory && (
