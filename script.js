@@ -5112,7 +5112,7 @@ const saveProfile = (e) => {
                                         onClick={confirmDeleteFromContext}
                                         className="btn-metal btn-metal--danger px-6 py-3 rounded-xl text-[10px]"
                                     >
-                                        Eliminar
+                                         Eliminar
                                     </button>
                                 </div>
                             </div>
@@ -5121,8 +5121,9 @@ const saveProfile = (e) => {
 
                 </div>
                 </main>
-            );
-        };
+            </div>
+        );
+    ;
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
