@@ -1151,6 +1151,13 @@
             const [maxEdad, setMaxEdad] = useState(60);
 
             const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [personajesSearchTerm, setPersonajesSearchTerm] = useState('');
+            const [selectedPersonajeId, setSelectedPersonajeId] = useState(null);
+            const [personajesDetailSection, setPersonajesDetailSection] = useState(null);
+            const [personajesSaving, setPersonajesSaving] = useState(false);
+            const [personajesNewMediaUrl, setPersonajesNewMediaUrl] = useState('');
+            const [personajesNewMediaType, setPersonajesNewMediaType] = useState('image');
+            const [personajesNewMediaLabel, setPersonajesNewMediaLabel] = useState(GALLERY_LABELS[0]);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
@@ -1889,6 +1896,12 @@
                 if (activeTab !== 'GALERIA') {
                     setSelectedGalleryBucket(null);
                     setSelectedGalleryIndex(null);
+                }
+            }, [activeTab]);
+            useEffect(() => {
+                if (activeTab !== 'PERSONAJES') {
+                    setSelectedPersonajeId(null);
+                    setPersonajesDetailSection(null);
                 }
             }, [activeTab]);
 
@@ -3095,6 +3108,7 @@ const saveProfile = (e) => {
                 Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
                 Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
             };
+            const CHARACTERISTIC_GROUPS = Object.entries(SCORE_GROUP_TO_ARENAS);
 
             const getScoreBreakdownByCategory = (profileId, categoryKey) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
@@ -3133,6 +3147,52 @@ const saveProfile = (e) => {
                     losses: getSortedNames(lossIds)
                 };
             };
+            const getArenaBreakdownForProfile = (profileId, arenaName) => {
+                if (!profileId || !arenaName) return { wins: [], losses: [] };
+                const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
+                const winIds = new Set();
+                const lossIds = new Set();
+
+                Object.values(arenaMatchups).forEach((match) => {
+                    if (!match || typeof match !== 'object') return;
+                    if (match.winnerId === profileId && match.loserId) winIds.add(match.loserId);
+                    if (match.loserId === profileId && match.winnerId) lossIds.add(match.winnerId);
+                });
+
+                const profileNameById = new Map(
+                    (perfiles || [])
+                        .filter((profile) => profile?.firebaseId)
+                        .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
+                );
+                const normalizeNames = (idsSet) => [...idsSet]
+                    .map((id) => profileNameById.get(id))
+                    .filter(Boolean)
+                    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+                return {
+                    wins: normalizeNames(winIds),
+                    losses: normalizeNames(lossIds)
+                };
+            };
+            const selectedPersonaje = useMemo(
+                () => (perfiles || []).find((profile) => profile?.firebaseId === selectedPersonajeId) || null,
+                [perfiles, selectedPersonajeId]
+            );
+            const personajesSearchResults = useMemo(() => {
+                const query = String(personajesSearchTerm || '').trim().toLowerCase();
+                const baseProfiles = [...(perfiles || [])].sort((a, b) => (a?.nombre || '').localeCompare((b?.nombre || ''), 'es', { sensitivity: 'base' }));
+                if (!query) return baseProfiles;
+                return baseProfiles.filter((profile) => {
+                    const edad = calcularEdad(profile?.fechaNacimiento);
+                    const candidateText = [
+                        profile?.nombre || '',
+                        profile?.profesion || '',
+                        profile?.nacionalidad || '',
+                        Number.isFinite(edad) ? String(edad) : ''
+                    ].join(' ').toLowerCase();
+                    return candidateText.includes(query);
+                });
+            }, [perfiles, personajesSearchTerm]);
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
                 const aValue = getSortValue(a, sortBy);
