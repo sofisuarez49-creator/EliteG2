@@ -1154,6 +1154,13 @@
 
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [personajesSearchTerm, setPersonajesSearchTerm] = useState('');
+            const [selectedPersonajeId, setSelectedPersonajeId] = useState(null);
+            const [personajesDetailSection, setPersonajesDetailSection] = useState(null);
+            const [personajesSaving, setPersonajesSaving] = useState(false);
+            const [personajesNewMediaUrl, setPersonajesNewMediaUrl] = useState('');
+            const [personajesNewMediaType, setPersonajesNewMediaType] = useState('image');
+            const [personajesNewMediaLabel, setPersonajesNewMediaLabel] = useState(GALLERY_LABELS[0]);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
@@ -1947,6 +1954,12 @@ const getInitialCatFormData = () => ({
                     setSelectedGalleryIndex(null);
                 }
             }, [activeTab]);
+            useEffect(() => {
+                if (activeTab !== 'PERSONAJES') {
+                    setSelectedPersonajeId(null);
+                    setPersonajesDetailSection(null);
+                }
+            }, [activeTab]);
 
             useEffect(() => {
                 setSelectedGalleryBucket(null);
@@ -2218,6 +2231,44 @@ const saveProfile = (e) => {
                         })
                         .catch(err => console.error("No pudo entrar el perfil:", err));
                 }
+            };
+            const updatePersonajeField = async (field, value) => {
+                if (!selectedPersonaje?.firebaseId || !field) return;
+                setPersonajesSaving(true);
+                try {
+                    await db.ref(`perfiles/${selectedPersonaje.firebaseId}/${field}`).set(value);
+                } catch (error) {
+                    console.error('No se pudo guardar el campo del personaje:', error);
+                } finally {
+                    setPersonajesSaving(false);
+                }
+            };
+            const handlePersonajesLocalUpload = async (event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedPersonaje?.firebaseId || !selectedFile) return;
+                try {
+                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                    await addGalleryImage({
+                        profileId: selectedPersonaje.firebaseId,
+                        url: dataUrl,
+                        label: personajesNewMediaLabel,
+                        type: personajesNewMediaType
+                    });
+                } catch (error) {
+                    console.error('No se pudo subir el archivo local del personaje:', error);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            const submitPersonajesMediaByUrl = async () => {
+                if (!selectedPersonaje?.firebaseId || !(personajesNewMediaUrl || '').trim()) return;
+                await addGalleryImage({
+                    profileId: selectedPersonaje.firebaseId,
+                    url: personajesNewMediaUrl,
+                    label: personajesNewMediaLabel,
+                    type: personajesNewMediaType
+                });
+                setPersonajesNewMediaUrl('');
             };
             const saveCategory = async (e) => {
                 e.preventDefault();
@@ -3187,6 +3238,7 @@ const saveProfile = (e) => {
                 Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
                 Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
             };
+            const CHARACTERISTIC_GROUPS = Object.entries(SCORE_GROUP_TO_ARENAS);
 
             const getScoreBreakdownByCategory = (profileId, categoryKey) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
@@ -3225,6 +3277,52 @@ const saveProfile = (e) => {
                     losses: getSortedNames(lossIds)
                 };
             };
+            const getArenaBreakdownForProfile = (profileId, arenaName) => {
+                if (!profileId || !arenaName) return { wins: [], losses: [] };
+                const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
+                const winIds = new Set();
+                const lossIds = new Set();
+
+                Object.values(arenaMatchups).forEach((match) => {
+                    if (!match || typeof match !== 'object') return;
+                    if (match.winnerId === profileId && match.loserId) winIds.add(match.loserId);
+                    if (match.loserId === profileId && match.winnerId) lossIds.add(match.winnerId);
+                });
+
+                const profileNameById = new Map(
+                    (perfiles || [])
+                        .filter((profile) => profile?.firebaseId)
+                        .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
+                );
+                const normalizeNames = (idsSet) => [...idsSet]
+                    .map((id) => profileNameById.get(id))
+                    .filter(Boolean)
+                    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+                return {
+                    wins: normalizeNames(winIds),
+                    losses: normalizeNames(lossIds)
+                };
+            };
+            const selectedPersonaje = useMemo(
+                () => (perfiles || []).find((profile) => profile?.firebaseId === selectedPersonajeId) || null,
+                [perfiles, selectedPersonajeId]
+            );
+            const personajesSearchResults = useMemo(() => {
+                const query = String(personajesSearchTerm || '').trim().toLowerCase();
+                const baseProfiles = [...(perfiles || [])].sort((a, b) => (a?.nombre || '').localeCompare((b?.nombre || ''), 'es', { sensitivity: 'base' }));
+                if (!query) return baseProfiles;
+                return baseProfiles.filter((profile) => {
+                    const edad = calcularEdad(profile?.fechaNacimiento);
+                    const candidateText = [
+                        profile?.nombre || '',
+                        profile?.profesion || '',
+                        profile?.nacionalidad || '',
+                        Number.isFinite(edad) ? String(edad) : ''
+                    ].join(' ').toLowerCase();
+                    return candidateText.includes(query);
+                });
+            }, [perfiles, personajesSearchTerm]);
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
                 const aValue = getSortValue(a, sortBy);
@@ -3266,7 +3364,8 @@ const saveProfile = (e) => {
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
-                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' },
+                                { id: 'PERSONAJES', icon: 'users', label: 'Personajes' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -4695,7 +4794,150 @@ const saveProfile = (e) => {
         </div>
     )}
 
-    {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
+    {/* 4. VISTA PERSONAJES */}
+    {activeTab === 'PERSONAJES' && (
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="space-y-2">
+                <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Personajes</h2>
+                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest">Buscá en vivo por nombre, profesión, nacionalidad o edad</p>
+            </div>
+
+            {!selectedPersonaje && (
+                <div className="space-y-4">
+                    <input
+                        type="text"
+                        value={personajesSearchTerm}
+                        onChange={(event) => setPersonajesSearchTerm(event.target.value)}
+                        placeholder="Buscar personaje, profesión, nacionalidad o edad..."
+                        className="w-full theme-surface-card border theme-border-secondary rounded-2xl px-5 py-4 text-sm text-slate-100 outline-none"
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {personajesSearchResults.map((profile) => {
+                            const average = calcularPromedio(profile);
+                            return (
+                                <button
+                                    key={profile.firebaseId}
+                                    type="button"
+                                    onClick={() => setSelectedPersonajeId(profile.firebaseId)}
+                                    className="text-left rounded-2xl border theme-border-secondary theme-surface-card p-4 hover:border-cyan-400/70 transition-all"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <img
+                                            src={getSafeImageSrc(profile?.fotos?.[0], 'https://via.placeholder.com/200x250')}
+                                            onError={applyCryingEmojiFallback}
+                                            className="w-14 h-14 rounded-xl object-cover"
+                                        />
+                                        <div>
+                                            <p className="font-black text-sm text-white">{profile.nombre || 'Sin nombre'}</p>
+                                            <p className="text-[11px] text-slate-300">{profile.profesion || 'Sin profesión'} · {profile.nacionalidad || 'Sin nacionalidad'}</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-[var(--metal-gold)] font-black uppercase tracking-wider mt-3">Edad: {calcularEdad(profile.fechaNacimiento)} · Score: {average}</p>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {selectedPersonaje && (() => {
+                const profileScores = getProfileScores(selectedPersonaje);
+                const galleryPhotos = [
+                    ...(selectedPersonaje?.galeria?.fotos || []).map((item, idx) => ({ ...normalizeGalleryItem(item, 'image'), sourceTag: 'fotos', sourceIndex: idx })),
+                    ...(selectedPersonaje?.galeria?.videos || []).map((item, idx) => ({ ...normalizeGalleryItem(item, 'video'), sourceTag: 'videos', sourceIndex: idx }))
+                ].filter((item) => item.url);
+                const profileBrokenPhotos = allGalleryPhotos.filter((photo) => photo.profileId === selectedPersonaje.firebaseId && photo.type === 'image' && brokenGalleryMap[photo.id]);
+                const missingBasicData = [
+                    !String(selectedPersonaje?.nombre || '').trim() && 'Nombre',
+                    !Number.isFinite(calcularEdad(selectedPersonaje?.fechaNacimiento)) && 'Edad',
+                    !String(selectedPersonaje?.nacionalidad || '').trim() && 'Nacionalidad',
+                    !String(selectedPersonaje?.profesion || '').trim() && 'Profesión'
+                ].filter(Boolean);
+                const missingBattleSlots = BATTLE_PHOTO_SLOTS.filter((slot) => (
+                    !(selectedPersonaje?.galeria?.fotos || [])
+                        .map((item) => normalizeGalleryItem(item, 'image'))
+                        .some((item) => item.url && slot.labels.includes(item.label))
+                ));
+
+                return (
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                            <button type="button" className="btn-metal btn-metal--silver px-4 py-2 rounded-xl text-xs font-black" onClick={() => setSelectedPersonajeId(null)}>← Volver al buscador</button>
+                            <button type="button" className="btn-metal btn-metal--gold px-4 py-2 rounded-xl text-xs font-black" onClick={() => openProfileEditor(selectedPersonaje)}>Editar completo</button>
+                        </div>
+
+                        <div className="rounded-2xl border theme-border-secondary theme-surface-card p-6 space-y-4">
+                            <h3 className="text-xl font-black text-white">{selectedPersonaje.nombre || 'Sin nombre'}</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                <label className="space-y-1">Nombre<input value={selectedPersonaje.nombre || ''} onChange={(e) => updatePersonajeField('nombre', e.target.value)} className="w-full theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2" /></label>
+                                <label className="space-y-1">Nacionalidad<input value={selectedPersonaje.nacionalidad || ''} onChange={(e) => updatePersonajeField('nacionalidad', e.target.value)} className="w-full theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2" /></label>
+                                <label className="space-y-1">Profesión<input value={selectedPersonaje.profesion || ''} onChange={(e) => updatePersonajeField('profesion', e.target.value)} className="w-full theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2" /></label>
+                                <label className="space-y-1">Fecha de nacimiento<input type="date" value={selectedPersonaje.fechaNacimiento || ''} onChange={(e) => updatePersonajeField('fechaNacimiento', e.target.value)} className="w-full theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2" /></label>
+                                <label className="space-y-1 md:col-span-2">URL avatar<input value={selectedPersonaje?.fotos?.[0] || ''} onChange={(e) => updatePersonajeField('fotos', [e.target.value])} className="w-full theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2" /></label>
+                            </div>
+                            <p className="text-xs text-slate-300">{personajesSaving ? 'Guardando cambios...' : `Edad calculada: ${calcularEdad(selectedPersonaje.fechaNacimiento)} años`}</p>
+                            <p className="text-xs text-rose-300">{missingBasicData.length ? `Faltan datos: ${missingBasicData.join(', ')}.` : 'Datos principales completos.'}</p>
+                            <p className="text-xs text-amber-300">{missingBattleSlots.length ? `Faltan fotos para batalla: ${missingBattleSlots.map((slot) => slot.label).join(', ')}.` : 'Tiene fotos para los 4 slots de batalla.'}</p>
+                            <p className="text-xs text-slate-300">Fotos multimedia: {galleryPhotos.length} · URLs rotas detectadas: {profileBrokenPhotos.length}</p>
+                        </div>
+
+                        <div className="rounded-2xl border theme-border-secondary theme-surface-card p-6 space-y-4">
+                            <h4 className="text-sm font-black uppercase tracking-[0.16em] text-[var(--metal-gold)]">Puntajes</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <button type="button" onClick={() => setPersonajesDetailSection({ type: 'total', label: 'General' })} className="rounded-xl border border-cyan-400/40 p-3 text-left">General: <b>{calcularPromedio(selectedPersonaje)}</b></button>
+                                {CHARACTERISTIC_GROUPS.map(([groupName]) => (
+                                    <button key={groupName} type="button" onClick={() => setPersonajesDetailSection({ type: 'group', groupName })} className="rounded-xl border border-emerald-400/40 p-3 text-left">{groupName}: <b>{groupName === 'Rostro' ? getRostroScore(selectedPersonaje).toFixed(0) : groupName === 'Cuerpo' ? getCuerpoScore(selectedPersonaje).toFixed(0) : getActitudScore(selectedPersonaje).toFixed(0)}</b></button>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+                                {CARACTERISTICAS.map((item) => (
+                                    <button key={item} type="button" onClick={() => setPersonajesDetailSection({ type: 'item', itemName: item })} className="rounded-xl border border-slate-600/60 p-3 text-left text-xs">
+                                        <span className="block text-slate-300">{item}</span>
+                                        <b className="text-white text-base">{profileScores[item] || 0}</b>
+                                    </button>
+                                ))}
+                            </div>
+                            {personajesDetailSection && (
+                                <div className="rounded-xl border theme-border-secondary p-4">
+                                    {personajesDetailSection.type === 'item' && (() => {
+                                        const breakdown = getArenaBreakdownForProfile(selectedPersonaje.firebaseId, personajesDetailSection.itemName);
+                                        return <p className="text-xs text-slate-200">{personajesDetailSection.itemName}: ganó {breakdown.wins.length} ({breakdown.wins.join(', ') || 'nadie'}) · perdió {breakdown.losses.length} ({breakdown.losses.join(', ') || 'nadie'}).</p>;
+                                    })()}
+                                    {personajesDetailSection.type === 'group' && (() => {
+                                        const items = SCORE_GROUP_TO_ARENAS[personajesDetailSection.groupName] || [];
+                                        return <div className="space-y-1">{items.map((item) => <p key={item} className="text-xs text-slate-200">{item}: {profileScores[item] || 0}</p>)}</div>;
+                                    })()}
+                                    {personajesDetailSection.type === 'total' && (
+                                        <div className="space-y-1">
+                                            {CHARACTERISTIC_GROUPS.map(([groupName]) => <p key={groupName} className="text-xs text-slate-200">{groupName}: {groupName === 'Rostro' ? getRostroScore(selectedPersonaje).toFixed(0) : groupName === 'Cuerpo' ? getCuerpoScore(selectedPersonaje).toFixed(0) : getActitudScore(selectedPersonaje).toFixed(0)}</p>)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-2xl border theme-border-secondary theme-surface-card p-6 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-black uppercase tracking-[0.16em] text-[var(--metal-gold)]">Multimedia</h4>
+                                <button type="button" className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black" onClick={() => renderGalleryWindow({ targetWindow: window.open('', '_blank', 'width=1300,height=900'), profileName: selectedPersonaje.nombre, profession: selectedPersonaje.profesion, photos: galleryPhotos, editingId: selectedPersonaje.firebaseId, battlePhotoPrefs: selectedPersonaje.batallaFotosPreferidas })}>Play / Ver todo</button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <input value={personajesNewMediaUrl} onChange={(e) => setPersonajesNewMediaUrl(e.target.value)} placeholder="URL de imagen o video" className="md:col-span-2 theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2" />
+                                <select value={personajesNewMediaType} onChange={(e) => setPersonajesNewMediaType(e.target.value)} className="theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2"><option value="image">Imagen</option><option value="video">Video</option></select>
+                                <select value={personajesNewMediaLabel} onChange={(e) => setPersonajesNewMediaLabel(e.target.value)} className="theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2">{GALLERY_LABELS.map((label) => <option key={label}>{label}</option>)}</select>
+                            </div>
+                            <div className="flex flex-wrap gap-3">
+                                <button type="button" onClick={submitPersonajesMediaByUrl} className="btn-metal btn-metal--gold px-4 py-2 rounded-lg text-[10px] font-black">Agregar por URL</button>
+                                <label className="btn-metal btn-metal--silver px-4 py-2 rounded-lg text-[10px] font-black cursor-pointer">Subir desde dispositivo<input type="file" accept="image/*,video/*" className="hidden" onChange={handlePersonajesLocalUpload} /></label>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+        </div>
+    )}
+
+    {/* 5. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
     {activeTab === 'CATEGORIAS' && !selectedCategory && (
         <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex justify-between items-end">
