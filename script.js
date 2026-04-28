@@ -17,11 +17,11 @@
         const { useState, useEffect, useMemo, useRef } = React;
 
         const GALLERY_LABELS = ['C', 'P', 'B', 'N', 'S', 'E', 'X'];
-        const GALLERY_VIEW_MODES = ['PERSONAJE', 'ETIQUETA', 'CARPETA', 'GENERAL'];
+        const GALLERY_VIEW_MODES = ['PERSONAJE', 'ETIQUETA', 'CATEGORIA', 'GENERAL'];
         const GALLERY_VIEW_MODE_LABELS = {
             PERSONAJE: 'Personaje',
             ETIQUETA: 'Etiqueta',
-            CARPETA: 'Carpetas',
+            CATEGORIA: 'Categorías',
             GENERAL: 'General'
         };
         const BATTLE_PHOTO_SLOTS = [
@@ -315,7 +315,6 @@
         };
 
         const STORAGE_KEY = 'g2_elite_database_v4';
-        const CAT_STORAGE_KEY = 'g2_elite_categories_v4';
         const CARACTERISTICAS = [
             'Rostro', 'Ojos', 'Boca', 'Cabello',
             'Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura',
@@ -361,7 +360,6 @@
             acc[item] = 0;
             return acc;
         }, {});
-        const INITIAL_CATEGORIES = [];
         const PROFESIONES_CONFIG = {
             'Cantante': { glyph: 'crown', color: 'rgba(34, 211, 238, 0.8)', tailwind: 'cyan-400' },
             'Actriz': { glyph: 'theater', color: 'rgba(34, 197, 94, 0.8)', tailwind: 'green-500' },
@@ -1152,7 +1150,6 @@
             const [minEdad, setMinEdad] = useState(18);
             const [maxEdad, setMaxEdad] = useState(60);
 
-            const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
@@ -1163,7 +1160,6 @@
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
             const [isModalOpen, setIsModalOpen] = useState(false);
-            const [isCatModalOpen, setIsCatModalOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
             const [contextMenuProfileId, setContextMenuProfileId] = useState(null);
             const [contextProfile, setContextProfile] = useState(null);
@@ -1208,21 +1204,6 @@
                 scoreVal: ''
             });
 
-const getInitialCatFormData = () => ({
-    label: '',
-    emoji: '📁',
-    coverImg: '',
-    reglas: {
-        nacionalidades: [],
-        profesiones: [],
-        ciudades: [],
-        edadMin: '',
-        edadMax: '',
-        caracteristica: 'Rostro',
-        operador: 'Superior a',
-        umbral: ''
-    }
-});
         const getEmptyProfileFormData = () => ({
                 nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
                 galeria: { fotos: [], gifs: [], videos: [] },
@@ -1511,14 +1492,11 @@ const getInitialCatFormData = () => ({
                 }
             };
 
-            const [catFormData, setCatFormData] = useState(getInitialCatFormData());
-            const resetCatForm = () => setCatFormData(getInitialCatFormData());
-
             useEffect(() => {
                 if (window.lucide) {
                     window.lucide.createIcons();
                 }
-            }, [activeTab, isModalOpen, isCatModalOpen, perfiles, selectedCategory, filters, categorias]);
+            }, [activeTab, isModalOpen, perfiles, selectedCategory, filters]);
 
             useEffect(() => {
                 if (galleryWindowRef.current && !galleryWindowRef.current.closed && editingId) {
@@ -1653,51 +1631,6 @@ const getInitialCatFormData = () => ({
                     }
                 });
 
-                // Escuchar Categorías en tiempo real desde Firebase
-                const categoriasRef = db.ref('categorias');
-                categoriasRef.on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        const listaCats = Object.keys(data).map(key => ({
-                            ...data[key],
-                            firebaseId: key
-                        }));
-                        setCategorias(listaCats);
-                    } else {
-                        setCategorias(INITIAL_CATEGORIES);
-                    }
-                });
-                const escenasRef = db.ref('escenas');
-                escenasRef.on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (!data) {
-                        setEscenas([]);
-                        return;
-                    }
-
-                    const listaEscenas = Object.keys(data).map((key, index) => {
-                        const normalizedItem = normalizeGalleryItem(data[key]);
-                        if (!normalizedItem.url) return null;
-
-                        return {
-                            id: `escena-${key}-${index}`,
-                            url: normalizedItem.url,
-                            label: normalizedItem.label,
-                            type: normalizedItem.type,
-                            isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
-                            nombre: 'ANÓNIMO',
-                            profesion: 'Escena',
-                            nacionalidad: '',
-                            fotoPerfil: normalizedItem.url,
-                            profileId: null,
-                            sourceTag: 'escenas',
-                            sourceIndex: index
-                        };
-                    }).filter(Boolean);
-
-                    setEscenas(listaEscenas);
-                });
-
                 const arenasRef = db.ref('arenaBattleState');
                 arenasRef.on('value', (snapshot) => {
                     setArenaBattleState(snapshot.val() || {});
@@ -1710,8 +1643,6 @@ const getInitialCatFormData = () => ({
                 return () => {
                     window.removeEventListener('message', handleMessage);
                     perfilesRef.off();
-                    categoriasRef.off();
-                    escenasRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
                 };
@@ -1747,50 +1678,9 @@ const getInitialCatFormData = () => ({
                 return scoreTotal.toFixed(0);
             };
 
-            const obtenerCategoriasDePerfil = (p) => {
-                const cats = [];
-                const nac = (p.nacionalidad || '').toLowerCase();
-                const prof = (p.profesion || '').toLowerCase();
-                const ciu = (p.ciudad || '').toLowerCase();
-                const edad = calcularEdad(p.fechaNacimiento);
-
-                categorias.forEach(c => {
-                    const r = c.reglas;
-                    let matches = true;
-
-                    // Filtros de texto (nacionalidad, profesión, ciudad)
-                    if (r.nacionalidades?.length > 0 && !r.nacionalidades.some(n => nac === n.toLowerCase())) matches = false;
-                    if (r.profesiones?.length > 0 && !r.profesiones.some(p => prof === p.toLowerCase())) matches = false;
-                    if (r.ciudades?.length > 0 && !r.ciudades.some(ciu_regla => ciu === ciu_regla.toLowerCase())) matches = false;
-
-                    // Filtros de edad
-                    if (r.edadMin && (edad === '?' || edad < parseInt(r.edadMin))) matches = false;
-                    if (r.edadMax && (edad === '?' || edad > parseInt(r.edadMax))) matches = false;
-
-                    // Filtro de puntuación (ej: Rostro > 8)
-                    if (r.caracteristica && r.umbral) {
-                        const score = getProfileScores(p)[r.caracteristica] || 0;
-                        const umbral = parseInt(r.umbral);
-                        if (r.operador === 'Superior a' && score <= umbral) matches = false;
-                        if (r.operador === 'Inferior a' && score >= umbral) matches = false;
-                    }
-
-                    // USAMOS firebaseId PORQUE ES EL QUE VIENE DE LA BASE DE DATOS
-                    if (matches) cats.push(c.firebaseId);
-                });
-                return cats;
-            };
-
             const uniqueNacionalidades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.nacionalidad).filter(Boolean))], [perfiles]);
             const uniqueProfesiones = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.profesion).filter(Boolean))], [perfiles]);
             const uniqueCiudades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.ciudad).filter(Boolean))], [perfiles]);
-            const profileCategoryMap = useMemo(() => {
-                return (perfiles || []).reduce((acc, profile) => {
-                    if (!profile?.firebaseId) return acc;
-                    acc[profile.firebaseId] = obtenerCategoriasDePerfil(profile);
-                    return acc;
-                }, {});
-            }, [perfiles, categorias]);
             const allGalleryPhotos = useMemo(() => {
                 const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
@@ -1893,25 +1783,26 @@ const getInitialCatFormData = () => ({
                         .filter(bucket => bucket.photos.length > 0);
                 }
 
-                return (categorias || [])
-                    .map((categoria) => {
-                        const categoryPhotos = allGalleryPhotos.filter((photo) => {
-                            if (!photo.profileId) return false;
-                            return (profileCategoryMap[photo.profileId] || []).includes(categoria.firebaseId);
-                        });
-
-                        return {
-                            id: `CARPETA-${categoria.firebaseId}`,
-                            nombre: categoria.label || 'Carpeta sin nombre',
-                            profesion: 'Categoría',
+                const groupedByProfession = allGalleryPhotos.reduce((acc, photo) => {
+                    const profession = String(photo.profesion || '').trim() || 'Sin categoría';
+                    if (!acc[profession]) {
+                        acc[profession] = {
+                            id: `CATEGORIA-${profession}`,
+                            nombre: profession,
+                            profesion: 'Categoría por profesión',
                             nacionalidad: '',
-                            fotoPerfil: categoria.coverImg || categoryPhotos[0]?.fotoPerfil || categoryPhotos[0]?.url || '',
-                            photos: categoryPhotos
+                            fotoPerfil: photo.fotoPerfil || photo.url,
+                            photos: []
                         };
-                    })
+                    }
+                    acc[profession].photos.push(photo);
+                    return acc;
+                }, {});
+
+                return Object.values(groupedByProfession)
                     .filter(bucket => bucket.photos.length > 0)
                     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
-            }, [allGalleryPhotos, categorias, galleryViewMode, profileCategoryMap]);
+            }, [allGalleryPhotos, galleryViewMode]);
             const activeGalleryBucket = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') return galleryBuckets[0] || null;
                 if (!selectedGalleryBucket) return null;
@@ -2272,39 +2163,6 @@ const saveProfile = (e) => {
                         .catch(err => console.error("No pudo entrar el perfil:", err));
                 }
             };
-            const saveCategory = async (e) => {
-                e.preventDefault();
-
-                const { firebaseId, ...categoryData } = catFormData;
-                const payload = { ...categoryData, type: 'custom' };
-
-                try {
-                    if (firebaseId) {
-                        await db.ref(`categorias/${firebaseId}`).update(payload);
-                    } else {
-                        await db.ref('categorias').push(payload);
-                    }
-
-                    setIsCatModalOpen(false);
-                    resetCatForm();
-                } catch (error) {
-                    console.error("La categoría no quiso guardarse:", error);
-                }
-            };
-            const deleteCategory = async (categoryId) => {
-                if (!categoryId) return;
-
-                try {
-                    await db.ref(`categorias/${categoryId}`).remove();
-
-                    setCategorias(prev => prev.filter(c => c.firebaseId !== categoryId));
-                    setSelectedCategory(prev => prev === categoryId ? null : prev);
-                } catch (error) {
-                    console.error("No se pudo borrar la categoría:", error);
-                    alert("No se pudo borrar la carpeta. Probá de nuevo.");
-                }
-            };
-
             const requestDeleteProfile = (profile) => {
                 if (!profile?.firebaseId) return;
                 setProfileActionError('');
@@ -3195,12 +3053,9 @@ const saveProfile = (e) => {
                     }).sort((a, b) => parseFloat(calcularPromedio(b)) - parseFloat(calcularPromedio(a)));
                 }
 
-                if (activeTab === 'CATEGORIAS' && selectedCategory) {
-                    return base.filter(p => obtenerCategoriasDePerfil(p).includes(selectedCategory));
-                }
 
                 return base;
-            }, [perfiles, activeTab, selectedCategory, filters]);
+            }, [perfiles, activeTab, filters]);
             const battleScopeOptions = useMemo(() => {
                 if (!selectedBattleScope) return [];
                 return getBattleScopeOptions(perfiles, selectedBattleScope);
@@ -3318,7 +3173,6 @@ const saveProfile = (e) => {
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
-                                { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
                                 { id: 'GALERIA', icon: 'images', label: 'Galería' }
                             ].map(item => (
                                 <button
@@ -3474,9 +3328,7 @@ const saveProfile = (e) => {
             <div
                 className="hud-frame hud-frame--panel profession-banner flex items-center justify-between p-6 rounded-2xl gothic-frame gothic-frame--ornate gothic-frame--grand"
                 style={{
-                    '--banner-color': (activeTab === 'CATEGORIAS'
-                        ? 'rgba(148, 163, 184, 0.8)'
-                        : getProfessionCardVisual(selectedCategory).baseColor)
+                    '--banner-color': getProfessionCardVisual(selectedCategory).baseColor
                 }}
             >
                 <button
@@ -3489,25 +3341,12 @@ const saveProfile = (e) => {
                     Volver
                 </button>
                 <h2 className="neon-sign neon-sign--magenta font-title text-6xl font-black italic text-white tracking-[0.08em] leading-none">
-    {/* Si estamos en la pestaña de categorías, buscamos el nombre lindo. Si no, mostramos la profesión directamente */}
-    {activeTab === 'CATEGORIAS'
-        ? (categorias.find(c => c.firebaseId === selectedCategory)?.label || "Archivo del Reino")
-        : selectedCategory
-    }
-</h2>
+                    {selectedCategory}
+                </h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-    {(perfiles || []).filter(p => {
-        if (!p) return false;
-        // Si estamos en la pestaña de Categorías Inteligentes:
-        if (activeTab === 'CATEGORIAS') {
-            const misCategorias = obtenerCategoriasDePerfil(p);
-            return misCategorias.includes(selectedCategory);
-        }
-        // Si estamos en Explorar (por profesión):
-        return String(p.profesion || '').trim().toLowerCase() === String(selectedCategory).trim().toLowerCase();
-    }).map(p => {
+    {(perfiles || []).filter(p => p && String(p.profesion || '').trim().toLowerCase() === String(selectedCategory).trim().toLowerCase()).map(p => {
                     const profKey = p.profesion?.toUpperCase() || 'DEFAULT';
                     const neonClass = (typeof neonColors !== 'undefined' && neonColors[profKey]) ? neonColors[profKey] : { color: '#06b6d4', sombra: 'rgba(6,182,212,0.5)' };
                     return (
@@ -4788,89 +4627,7 @@ const saveProfile = (e) => {
         </div>
     )}
 
-    {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
-    {activeTab === 'CATEGORIAS' && !selectedCategory && (
-        <div className="space-y-10 animate-in fade-in duration-500">
-            <div className="flex justify-between items-end">
-                <div>
-                    <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Carpetas</h2>
-                </div>
-                <button onClick={() => { resetCatForm(); setIsCatModalOpen(true); }} className="btn-metal btn-metal--gold px-8 py-3 rounded-xl text-xs">
-                    NUEVA CATEGORÍA
-                </button>
-            </div>
-            {categorias.length === 0 ? (
-                <div className="py-20 border-2 border-dashed theme-border-secondary rounded-2xl text-center">
-                    <p className="text-slate-600 font-black italic uppercase">No hay categorías personalizadas</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-{categorias.map(cat => (
-<div key={cat.firebaseId} onClick={() => setSelectedCategory(cat.firebaseId)} className="group relative bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] rounded-xl overflow-hidden border theme-border-secondary cursor-pointer hover:border-[var(--metal-gold)]/70 transition-all duration-500 shadow-[inset_0_1px_0_rgba(148,163,184,0.2),0_18px_30px_rgba(2,6,23,0.55)] aspect-[3/4]">
-        {/* BOTONES DE ACCIÓN: EDITAR Y ELIMINAR */}
-        <div className="absolute top-5 right-5 z-50 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-            <button
-    onClick={(e) => {
-        e.stopPropagation();
-        // Preparamos los datos asegurándonos de que las listas existan (si no, ponemos [])
-        setCatFormData({
-            ...cat,
-            reglas: {
-                ...cat.reglas,
-                nacionalidades: cat.reglas?.nacionalidades || [],
-                profesiones: cat.reglas?.profesiones || [],
-                ciudades: cat.reglas?.ciudades || []
-            }
-        });
-        setIsCatModalOpen(true); // Abrimos el modal
-    }}
-    className="w-8 h-8 flex items-center justify-center bg-slate-900/95 hover:bg-[var(--metal-bronze)] text-white rounded-lg border theme-border-secondary transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_rgba(2,6,23,0.45)]"
->
-    <LucideIcon name="pencil" size={14} />
-</button>
-            <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    if(window.confirm('¿Seguro que querés borrar esta carpeta?')) {
-                        deleteCategory(cat.firebaseId);
-                    }
-                }}
-                className="w-8 h-8 flex items-center justify-center bg-slate-900/95 hover:bg-red-600 text-white rounded-lg border theme-border-secondary transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_rgba(2,6,23,0.45)]"
-            >
-                <LucideIcon name="x" size={14} />
-            </button>
-        </div>
-
-        {/* Imagen de Portada */}
-        <div className="absolute inset-0">
-            <img
-                src={getSafeImageSrc(cat.coverImg, 'https://via.placeholder.com/400x600?text=Sin+Portada')}
-                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity duration-500"
-                onError={applyCryingEmojiFallback}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
-        </div>
-
-        {/* Contenido (Nombre y Contador) */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 text-center">
-            <h3 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2 drop-shadow-lg">
-                {cat.label}
-            </h3>
-            <div className="inline-flex items-center gap-2 bg-[var(--metal-bronze)]/20 backdrop-blur-md px-4 py-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)]">
-                <span className="text-[10px] font-black uppercase text-[var(--metal-gold)] tracking-widest">
-                    {perfiles.filter(p => obtenerCategoriasDePerfil(p).includes(cat.firebaseId)).length} Perfiles
-                </span>
-            </div>
-        </div>
-    </div>
-))}
-                </div>
-            )}
-        </div>
-    )}
-</div>
-                    </main>
-                    {isModalOpen && (
+                {isModalOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
                             <div className="bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] w-full max-w-2xl rounded-3xl overflow-hidden shadow-[inset_0_1px_0_rgba(148,163,184,0.22),0_24px_60px_rgba(2,6,23,0.65)] border theme-border-secondary max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
                                <button
@@ -5106,8 +4863,8 @@ const saveProfile = (e) => {
             </div>
         </div>
     </div>
+                                    </div>
 
-</div>
                                     <div className="flex gap-4">
                                         {editingId && (
                                             <button type="button" onClick={deleteProfile} className="btn-metal btn-metal--danger px-10 py-8 rounded-xl text-xs">
@@ -5158,142 +4915,6 @@ const saveProfile = (e) => {
                         </div>
                     )}
 
-                    {isCatModalOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
-                            <div className="bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] w-full max-w-5xl rounded-3xl overflow-hidden shadow-[inset_0_1px_0_rgba(148,163,184,0.22),0_24px_60px_rgba(2,6,23,0.65)] border theme-border-secondary max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
-                                <button
-    type="button"
-    onClick={() => { resetCatForm(); setIsCatModalOpen(false); }}
-    className="p-4 hover:bg-slate-800 rounded-full transition-all"
->
-    <LucideIcon name="x" size={24} className="text-slate-400" />
-</button>
-                                <form onSubmit={saveCategory} className="flex-1 overflow-y-auto p-12 space-y-12">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                                        <div className="space-y-8">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-[var(--metal-bronze)] rounded-2xl flex items-center justify-center text-white">
-                                                    <LucideIcon name="scroll" />
-                                                </div>
-                                                <h3 className="text-xl font-black italic text-white">Nuevo Archivo del Reino</h3>
-                                            </div>
-                                            <div className="space-y-4">
-                                                <input required placeholder="Nombre de la Carpeta" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none font-bold text-lg text-white" value={catFormData.label} onChange={e => setCatFormData({...catFormData, label: e.target.value})} />
-                                                <div className="w-full">
-                                                    <div className="space-y-1 w-full">
-                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">URL de Portada</label>
-                                                        <input
-                                                            placeholder="https://..."
-                                                            className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold text-xs"
-                                                            value={catFormData.coverImg}
-                                                            onChange={e => setCatFormData({...catFormData, coverImg: e.target.value})}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
-                                                <LucideIcon name="shield" size={12} /> Mandatos de Clasificación del Consejo
-                                            </h4>
-
-                                            <div className="p-8 bg-slate-950/50 border theme-border-secondary rounded-2xl space-y-6">
-                                                <div className="grid grid-cols-2 gap-4">
-{/* Filtro Nacionalidades Acumulable */}
-                                                    <div className="space-y-1">
-                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">NACIONALIDADES</label>
-                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
-                                                            {catFormData.reglas.nacionalidades.map(n => (
-                                                                <span key={n} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
-                                                                    {n} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, nacionalidades: catFormData.reglas.nacionalidades.filter(x => x !== n)}})}>×</button>
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
-                                                            onChange={e => {
-                                                                if(e.target.value && !catFormData.reglas.nacionalidades.includes(e.target.value))
-                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, nacionalidades: [...catFormData.reglas.nacionalidades, e.target.value]}})
-                                                            }}>
-                                                            <option value="">Añadir país...</option>
-                                                            {uniqueNacionalidades.filter(n => n !== 'Todas').map(n => <option key={n} value={n}>{n}</option>)}
-                                                        </select>
-                                                    </div>
-
-                                                    {/* Filtro Ciudades Acumulable */}
-                                                    <div className="space-y-1">
-                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">CIUDADES</label>
-                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
-                                                            {catFormData.reglas.ciudades.map(c => (
-                                                                <span key={c} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
-                                                                    {c} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, ciudades: catFormData.reglas.ciudades.filter(x => x !== c)}})}>×</button>
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
-                                                            onChange={e => {
-                                                                if(e.target.value && !catFormData.reglas.ciudades.includes(e.target.value))
-                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, ciudades: [...catFormData.reglas.ciudades, e.target.value]}})
-                                                            }}>
-                                                            <option value="">Añadir ciudad...</option>
-                                                            {uniqueCiudades.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
-                                                        </select>
-                                                    </div>
-
-                                                    {/* Filtro Profesiones Acumulable */}
-                                                    <div className="space-y-1">
-                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">PROFESIONES</label>
-                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
-                                                            {catFormData.reglas.profesiones.map(p => (
-                                                                <span key={p} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
-                                                                    {p} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, profesiones: catFormData.reglas.profesiones.filter(x => x !== p)}})}>×</button>
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
-                                                            onChange={e => {
-                                                                if(e.target.value && !catFormData.reglas.profesiones.includes(e.target.value))
-                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, profesiones: [...catFormData.reglas.profesiones, e.target.value]}})
-                                                            }}>
-                                                            <option value="">Añadir profesión...</option>
-                                                            {Object.keys(PROFESIONES_CONFIG).map(p => <option key={p} value={p}>{p}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div className="space-y-1">
-                                                            <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">EDAD MIN</label>
-                                                            <input type="number" placeholder="18" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-white" value={catFormData.reglas.edadMin} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, edadMin: e.target.value}})} />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">EDAD MAX</label>
-                                                            <input type="number" placeholder="30" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-white" value={catFormData.reglas.edadMax} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, edadMax: e.target.value}})} />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-1 pt-4 border-t theme-border-secondary">
-                                                    <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">Condición de Score</label>
-                                                    <div className="grid grid-cols-2 gap-2 mb-2">
-                                                        <select className="theme-surface-card p-3 rounded-xl text-[10px] font-bold outline-none border theme-border-secondary text-white" value={catFormData.reglas.caracteristica} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, caracteristica: e.target.value}})}>
-                                                            {CARACTERISTICAS.map(c => <option key={c}>{c}</option>)}
-                                                        </select>
-                                                        <select className="theme-surface-card p-3 rounded-xl text-[10px] font-bold outline-none border theme-border-secondary text-white" value={catFormData.reglas.operador} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, operador: e.target.value}})}>
-                                                            <option>Superior a</option>
-                                                            <option>Inferior a</option>
-                                                        </select>
-                                                    </div>
-                                                    <input type="number" placeholder="Umbral (0-10)" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-[var(--metal-gold)]" value={catFormData.reglas.umbral} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, umbral: e.target.value}})} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button type="submit" className="btn-metal btn-metal--gold w-full py-8 rounded-xl text-xs">
-                                        CREAR CARPETA INTELIGENTE
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         };
