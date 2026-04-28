@@ -1187,6 +1187,7 @@
             const [isGalleryPlaying, setIsGalleryPlaying] = useState(false);
             const [isGalleryRandom, setIsGalleryRandom] = useState(false);
             const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
+            const [escenas, setEscenas] = useState([]);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
             const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
@@ -1339,6 +1340,26 @@ const getInitialCatFormData = () => ({
                     }
                 } catch (error) {
                     console.error('Error al guardar archivo en galería:', error);
+                }
+            };
+            const submitEscena = async () => {
+                const normalizedUrl = (urlInput || '').trim();
+                if (!normalizedUrl) return;
+
+                const normalizedLabel = GALLERY_LABELS.includes(galleryLabel) ? galleryLabel : '';
+                const normalizedType = detectGalleryItemType(normalizedUrl, galleryMediaType);
+                try {
+                    await db.ref('escenas').push({
+                        url: normalizedUrl,
+                        label: normalizedLabel,
+                        type: normalizedType,
+                        createdAt: Date.now()
+                    });
+                    setUrlInput('');
+                    setGalleryLabel(GALLERY_LABELS[0]);
+                    setGalleryMediaType('image');
+                } catch (error) {
+                    console.error('Error al guardar escena:', error);
                 }
             };
             const updateGalleryItemLabel = async ({ profileId, sourceTag, sourceIndex, label }) => {
@@ -1646,6 +1667,36 @@ const getInitialCatFormData = () => ({
                         setCategorias(INITIAL_CATEGORIES);
                     }
                 });
+                const escenasRef = db.ref('escenas');
+                escenasRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (!data) {
+                        setEscenas([]);
+                        return;
+                    }
+
+                    const listaEscenas = Object.keys(data).map((key, index) => {
+                        const normalizedItem = normalizeGalleryItem(data[key]);
+                        if (!normalizedItem.url) return null;
+
+                        return {
+                            id: `escena-${key}-${index}`,
+                            url: normalizedItem.url,
+                            label: normalizedItem.label,
+                            type: normalizedItem.type,
+                            isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
+                            nombre: 'ANÓNIMO',
+                            profesion: 'Escena',
+                            nacionalidad: '',
+                            fotoPerfil: normalizedItem.url,
+                            profileId: null,
+                            sourceTag: 'escenas',
+                            sourceIndex: index
+                        };
+                    }).filter(Boolean);
+
+                    setEscenas(listaEscenas);
+                });
 
                 const arenasRef = db.ref('arenaBattleState');
                 arenasRef.on('value', (snapshot) => {
@@ -1660,6 +1711,7 @@ const getInitialCatFormData = () => ({
                     window.removeEventListener('message', handleMessage);
                     perfilesRef.off();
                     categoriasRef.off();
+                    escenasRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
                 };
@@ -1740,7 +1792,7 @@ const getInitialCatFormData = () => ({
                 }, {});
             }, [perfiles, categorias]);
             const allGalleryPhotos = useMemo(() => {
-                return (perfiles || []).flatMap((perfil) => {
+                const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -1787,7 +1839,8 @@ const getInitialCatFormData = () => ({
                         })
                         .filter(Boolean);
                 });
-            }, [perfiles]);
+                return [...profileGalleryPhotos, ...(escenas || [])];
+            }, [perfiles, escenas]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
@@ -3622,7 +3675,47 @@ const saveProfile = (e) => {
                     </div>
                     <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
                         <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Perfiles</p>
-                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId)).size}</p>
+                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId).filter(Boolean)).size}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] p-5">
+                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+                    <div className="flex-1 space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Escenas</p>
+                        <p className="text-xs text-slate-400">Cargá una URL de foto o video sin asignarla a ningún personaje.</p>
+                        <input
+                            type="text"
+                            value={urlInput}
+                            onChange={(e) => setUrlInput(e.target.value)}
+                            className="w-full filter-select"
+                            placeholder="https://..."
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <select
+                            value={galleryLabel}
+                            onChange={(e) => setGalleryLabel(e.target.value)}
+                            className="filter-select"
+                        >
+                            {GALLERY_LABELS.map(label => <option key={label} value={label}>{label}</option>)}
+                        </select>
+                        <select
+                            value={galleryMediaType}
+                            onChange={(e) => setGalleryMediaType(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="image">Imagen</option>
+                            <option value="video">Video</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={submitEscena}
+                            className="btn-metal btn-metal--gold col-span-2 px-4 py-2 rounded-full text-[10px] tracking-[0.08em]"
+                        >
+                            Guardar escena
+                        </button>
                     </div>
                 </div>
             </div>
