@@ -249,6 +249,7 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .card-score-badge {
+    position: relative;
     background: color-mix(in srgb, var(--card-neon-color) 24%, rgba(2, 6, 23, 0.86) 76%);
     border-color: color-mix(in srgb, var(--card-neon-color) 50%, rgba(148, 163, 184, 0.25) 50%);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
@@ -259,6 +260,54 @@ h1, h2, h3, h4, h5, h6,
     background: color-mix(in srgb, var(--card-neon-color) 34%, rgba(2, 6, 23, 0.74) 66%);
     box-shadow: 0 0 18px color-mix(in srgb, var(--card-neon-color) 58%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.22);
     transform: translateY(-1px);
+}
+
+.card-score-badge__value {
+    color: #ffffff;
+    transition: color 220ms ease, text-shadow 220ms ease;
+}
+
+.card-score-badge--fire .card-score-badge__value {
+    color: #ff4d2e;
+    text-shadow:
+        0 0 8px rgba(255, 90, 32, 0.95),
+        0 0 16px rgba(255, 35, 0, 0.85),
+        0 0 28px rgba(255, 190, 11, 0.65);
+}
+
+.card-score-badge__fire-emoji {
+    position: absolute;
+    top: -9px;
+    right: -8px;
+    font-size: 0.8rem;
+    filter: drop-shadow(0 0 5px rgba(255, 90, 32, 0.9));
+}
+
+.card-score-badge--diamond::after {
+    content: "💎";
+    position: absolute;
+    bottom: -11px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    text-shadow: 0 0 7px rgba(125, 211, 252, 0.9);
+}
+
+.card-score-badge--gold {
+    background:
+        radial-gradient(circle at 20% 18%, rgba(255, 255, 240, 0.8) 0%, rgba(255, 255, 240, 0.22) 26%, transparent 52%),
+        linear-gradient(160deg, #fff6bf 0%, #ffd84d 28%, #e3a90e 62%, #8d5d00 100%);
+    border-color: #ffe082;
+    box-shadow:
+        0 0 18px rgba(255, 212, 59, 0.85),
+        0 0 35px rgba(255, 184, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.card-score-badge--gold .card-score-badge__value,
+.card-score-badge--gold span:first-child {
+    color: #2b1b00 !important;
+    text-shadow: 0 0 8px rgba(255, 240, 179, 0.7);
 }
 
 .card-footer-profession {
@@ -549,4 +598,90 @@ button:hover,
         inset 0 -22px 30px rgba(2,6,23,0.75),
         0 18px 32px rgba(2,6,23,0.58),
         0 0 36px color-mix(in srgb, var(--battle-profession-color) 56%, transparent);
+}
+
+.sidebar-screen-toggle {
+    position: fixed;
+    top: 0.35rem;
+    left: 0.35rem;
+    width: 1.55rem;
+    height: 1.55rem;
+    padding: 0;
+    z-index: 60;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+}
+
+.taller-card--selected {
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 0 28px rgba(34, 211, 238, 0.5), 0 0 64px rgba(139, 92, 246, 0.28), inset 0 0 40px rgba(34, 211, 238, 0.2);
+}
+
+.taller-detail-panel {
+    border: 1px solid rgba(34, 211, 238, 0.45);
+    background: radial-gradient(circle at 18% 22%, rgba(34, 211, 238, 0.18), transparent 40%), radial-gradient(circle at 88% 16%, rgba(139, 92, 246, 0.2), transparent 42%), linear-gradient(145deg, rgba(6, 12, 24, 0.95), rgba(2, 6, 23, 0.98));
+    box-shadow: 0 0 36px rgba(34, 211, 238, 0.25), inset 0 0 36px rgba(15, 23, 42, 0.7);
+}
+
+.taller-detail-title {
+    color: #f8fdff;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 12px rgba(34, 211, 238, 0.68), 0 0 26px rgba(139, 92, 246, 0.45);
+}
+
+.taller-detail-avatar {
+    min-height: 420px;
+    background: linear-gradient(170deg, rgba(15, 23, 42, 0.85), rgba(2, 6, 23, 0.96));
+    box-shadow: inset 0 0 0 2px rgba(148, 163, 184, 0.22), 0 0 24px rgba(34, 211, 238, 0.24);
+}
+
+.taller-data-chip {
+    border-radius: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    padding: 0.95rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.76), rgba(2, 6, 23, 0.88)), repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.09) 0 1px, transparent 1px 14px);
+    box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.16), 0 0 16px rgba(34, 211, 238, 0.14);
+}
+
+.taller-data-chip span {
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: rgba(186, 230, 253, 0.9);
+    font-weight: 800;
+}
+
+.taller-data-chip strong {
+    font-size: 0.92rem;
+    color: #f8fafc;
+    text-shadow: 0 0 10px rgba(34, 211, 238, 0.25);
+}
+
+.battle-mode-card--completed {
+    border-color: color-mix(in srgb, #22c55e 68%, rgba(148, 163, 184, 0.35) 32%);
+    background:
+        radial-gradient(circle at 20% 14%, rgba(255,255,255,0.2), transparent 34%),
+        repeating-linear-gradient(110deg, rgba(255,255,255,0.06) 0 1.5px, transparent 1.5px 7px),
+        linear-gradient(158deg, #052e16 0%, #14532d 45%, #052e16 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.24), inset 0 -20px 28px rgba(2,6,23,0.54), 0 14px 24px rgba(2,6,23,0.45), 0 0 22px rgba(34,197,94,0.28);
+}
+
+.battle-mode-card__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.32rem 0.72rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(167, 243, 208, 0.75);
+    background: color-mix(in srgb, rgba(22,163,74,0.35) 70%, rgba(2,6,23,0.6) 30%);
+    color: #d1fae5;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
 }

@@ -17,20 +17,22 @@
         const { useState, useEffect, useMemo, useRef } = React;
 
         const GALLERY_LABELS = ['C', 'P', 'B', 'N', 'S', 'E', 'X'];
-        const GALLERY_VIEW_MODES = ['PERSONAJE', 'ETIQUETA', 'CATEGORIA', 'GENERAL'];
+        const GALLERY_VIEW_MODES = ['PERSONAJE', 'ETIQUETA', 'CARPETA', 'GENERAL'];
         const GALLERY_VIEW_MODE_LABELS = {
             PERSONAJE: 'Personaje',
             ETIQUETA: 'Etiqueta',
-            CATEGORIA: 'Categorías',
+            CARPETA: 'Carpetas',
             GENERAL: 'General'
         };
         const BATTLE_PHOTO_SLOTS = [
-            { id: 'pechos', label: 'Pechos', labels: ['P'] },
+            { id: 'perfil', label: 'Perfil', labels: [] },
             { id: 'colaPiernas', label: 'Cola/Piernas', labels: ['C'] },
-            { id: 'cuerpoCintura', label: 'Cuerpo/Cintura', labels: ['N', 'B'] },
+            { id: 'pechos', label: 'Pechos', labels: ['P'] },
+            { id: 'cuerpoCintura', label: 'Cintura/Cuerpo', labels: ['N', 'B'] },
             { id: 'sensualidad', label: 'Sensualidad', labels: ['E', 'S'] }
         ];
         const BATTLE_ARENA_TO_SLOT = {
+            perfil: 'perfil',
             pecho: 'pechos',
             pechos: 'pechos',
             cola: 'colaPiernas',
@@ -218,6 +220,137 @@
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
+        const openSimpleTitleWindow = (title = '') => {
+            const normalizedTitle = String(title || '').trim();
+            if (!normalizedTitle) return;
+            const popup = window.open('', '_blank');
+            if (!popup) return;
+            popup.document.write(`
+                <!DOCTYPE html>
+                <html lang="es">
+                    <head>
+                        <meta charset="UTF-8" />
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                        <title>${normalizedTitle}</title>
+                        <link rel="stylesheet" href="styles.css" />
+                        <style>
+                            body { margin: 0; min-height: 100vh; overflow: auto; }
+                            .popup-shell { min-height: 100vh; padding: clamp(1rem, 2.8vw, 2.2rem); display: flex; justify-content: center; }
+                            .popup-panel { width: min(1100px, 100%); border-radius: 1.5rem; padding: clamp(1rem, 2.4vw, 2rem); }
+                            .popup-topline { font-size: 0.65rem; letter-spacing: 0.36em; text-transform: uppercase; color: color-mix(in srgb, var(--neon-cyan) 85%, white 15%); }
+                            .popup-title { margin-top: 0.65rem; font-size: clamp(1.9rem, 3.8vw, 2.9rem); font-weight: 800; text-transform: uppercase; color: #f8fbff; text-shadow: 0 0 20px rgba(34, 211, 238, 0.35); }
+                            .popup-grid { margin-top: 1.2rem; display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+                            .popup-card { border-radius: 1rem; padding: 0.95rem 1rem; }
+                            .popup-card h3 { margin: 0 0 0.35rem 0; font-size: 0.92rem; letter-spacing: 0.08em; text-transform: uppercase; color: #e0f2fe; }
+                            .popup-card p { margin: 0; color: #cbd5e1; font-size: 0.82rem; line-height: 1.4; }
+                        </style>
+                    </head>
+                    <body class="text-slate-200">
+                        <main class="popup-shell">
+                            <section class="popup-panel gothic-frame surface-panel--neon">
+                                <p class="popup-topline">Panel del taller</p>
+                                <h1 class="popup-title font-title">${normalizedTitle}</h1>
+                                <p class="text-slate-300 text-sm mt-2">Esta vista mantiene la estética de la interfaz principal y está lista para recibir contenido dinámico.</p>
+                                <div class="popup-grid">
+                                    <article class="popup-card surface-panel theme-border-secondary">
+                                        <h3>Resumen</h3>
+                                        <p>Sección para métricas generales, progreso o highlights del personaje seleccionado.</p>
+                                    </article>
+                                    <article class="popup-card surface-panel theme-border-secondary">
+                                        <h3>Detalle</h3>
+                                        <p>Espacio reservado para tablas, tarjetas o controles específicos de ${normalizedTitle.toLowerCase()}.</p>
+                                    </article>
+                                    <article class="popup-card surface-panel theme-border-secondary">
+                                        <h3>Actividad</h3>
+                                        <p>Timeline compatible con eventos, historial de cambios o carga de nuevos recursos.</p>
+                                    </article>
+                                </div>
+                            </section>
+                        </main>
+                    </body>
+                </html>
+            `);
+            popup.document.close();
+        };
+        const MultimediaModal = ({
+            isOpen = false,
+            profile = null,
+            onClose = () => {}
+        }) => {
+            const [isGalleryOpen, setIsGalleryOpen] = useState(true);
+            const [isTopOpen, setIsTopOpen] = useState(true);
+
+            useEffect(() => {
+                if (!isOpen) return;
+                setIsGalleryOpen(true);
+                setIsTopOpen(true);
+            }, [isOpen, profile?.firebaseId]);
+
+            if (!isOpen || !profile) return null;
+
+            const galleryItems = Array.isArray(profile?.galeria?.fotos)
+                ? profile.galeria.fotos
+                    .map((item) => normalizeGalleryItem(item, 'image'))
+                    .filter((item) => item.url)
+                : [];
+            const topScores = Object.entries(profile?.puntuaciones || {})
+                .map(([label, value]) => ({ label, value: Number(value) || 0 }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, 5);
+
+            return (
+                <div
+                    className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-8"
+                    onClick={onClose}
+                    role="presentation"
+                >
+                    <section
+                        className="gothic-frame surface-panel surface-panel--neon rounded-[2rem] p-6 md:p-8 w-full max-w-5xl max-h-[90vh] overflow-y-auto relative"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Multimedia del personaje"
+                    >
+                        <button type="button" onClick={onClose} className="absolute top-4 right-4 w-10 h-10 rounded-full border border-cyan-200/35 bg-slate-900/80 text-slate-100">✕</button>
+                        <h2 className="font-title text-center text-3xl md:text-4xl text-white uppercase tracking-wide">Multimedia</h2>
+                        <p className="text-center text-cyan-100/80 text-xs uppercase tracking-[0.2em] mt-2">{profile?.nombre || 'Personaje'}</p>
+
+                        <div className="mt-6 space-y-4">
+                            <article className="surface-panel rounded-2xl border border-cyan-200/20">
+                                <button type="button" onClick={() => setIsGalleryOpen((prev) => !prev)} className="w-full px-4 py-3 text-left font-black uppercase tracking-wide flex items-center justify-between">
+                                    <span>Galería</span><span>{isGalleryOpen ? '−' : '+'}</span>
+                                </button>
+                                {isGalleryOpen && (
+                                    <div className="px-4 pb-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        {galleryItems.length ? galleryItems.map((item, idx) => (
+                                            <div key={`${item.url}-${idx}`} className="rounded-xl overflow-hidden border border-slate-600/40 bg-slate-900/40">
+                                                <img src={item.url} alt={`Multimedia ${idx + 1}`} className="w-full h-36 object-cover" loading="lazy" />
+                                            </div>
+                                        )) : <p className="text-sm text-slate-300 col-span-full">Sin contenido en galería.</p>}
+                                    </div>
+                                )}
+                            </article>
+
+                            <article className="surface-panel rounded-2xl border border-cyan-200/20">
+                                <button type="button" onClick={() => setIsTopOpen((prev) => !prev)} className="w-full px-4 py-3 text-left font-black uppercase tracking-wide flex items-center justify-between">
+                                    <span>5 Principales</span><span>{isTopOpen ? '−' : '+'}</span>
+                                </button>
+                                {isTopOpen && (
+                                    <div className="px-4 pb-4 space-y-2">
+                                        {topScores.length ? topScores.map((item) => (
+                                            <div key={item.label} className="surface-panel rounded-xl px-3 py-2 flex items-center justify-between">
+                                                <span className="text-sm text-slate-200 uppercase">{item.label}</span>
+                                                <strong className="text-cyan-200">{item.value}</strong>
+                                            </div>
+                                        )) : <p className="text-sm text-slate-300">Sin puntajes cargados.</p>}
+                                    </div>
+                                )}
+                            </article>
+                        </div>
+                    </section>
+                </div>
+            );
+        };
         const checkImageUrlIsBroken = async (url = '', {
             timeoutMs = 12000,
             retries = 1
@@ -315,6 +448,7 @@
         };
 
         const STORAGE_KEY = 'g2_elite_database_v4';
+        const CAT_STORAGE_KEY = 'g2_elite_categories_v4';
         const CARACTERISTICAS = [
             'Rostro', 'Ojos', 'Boca', 'Cabello',
             'Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura',
@@ -360,6 +494,7 @@
             acc[item] = 0;
             return acc;
         }, {});
+        const INITIAL_CATEGORIES = [];
         const PROFESIONES_CONFIG = {
             'Cantante': { glyph: 'crown', color: 'rgba(34, 211, 238, 0.8)', tailwind: 'cyan-400' },
             'Actriz': { glyph: 'theater', color: 'rgba(34, 197, 94, 0.8)', tailwind: 'green-500' },
@@ -760,19 +895,31 @@
                     <select id="nuevaFotoEtiqueta" style="width: 100%; padding: 12px; margin-top: 15px; background: #020617; border: 1px solid rgba(71,85,105,0.92); color: #e2e8f0; border-radius: 8px; outline: none; box-shadow: inset 0 1px 0 rgba(148,163,184,0.18);">
                         ${GALLERY_LABELS.map(label => `<option value="${label}">Etiqueta ${label}</option>`).join('')}
                     </select>
+                    <input type="hidden" id="slotSelectionId" value="">
+                    <p id="slotGalleryHint" style="display:none; margin:10px 0 0; font-size:11px; color:#93c5fd;">Tip: para “Elegir desde galería” también podés tocar los chips de slot sobre cada imagen.</p>
                     <button onclick="addMediaFromModal()"
                         style="margin-top: 15px; width: 100%; padding: 10px; background: linear-gradient(180deg, rgba(14,116,144,0.95), rgba(8,47,73,0.95)); color: #ecfeff; border: 1px solid rgba(103,232,249,0.9); border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.08em; box-shadow: 0 0 14px rgba(34,211,238,0.4);">
                         Guardar
                     </button>
                 </div>
 
-                <div style="width:100%; margin-bottom: 20px; padding: 14px; border-radius: 12px; border: 1px solid rgba(148,163,184,0.28); background: rgba(2,6,23,0.45); display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
+                <details open style="width:100%; margin-bottom: 20px; border-radius: 12px; border: 1px solid rgba(148,163,184,0.28); background: rgba(2,6,23,0.45);">
+                    <summary style="cursor:pointer; list-style:none; padding: 12px 14px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 900; color: #f8fafc;">
+                        5 Principales
+                    </summary>
+                    <div style="padding: 0 14px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
                     ${BATTLE_PHOTO_SLOTS.map((slot) => {
                         const hasSelection = !!safeBattlePhotoPrefs[slot.id];
+                        const canPickFromGallery = slot.id !== 'perfil';
                         return `
-                            <div style="border:1px solid rgba(71,85,105,0.65); border-radius:10px; padding:10px; background: rgba(15,23,42,0.75);">
+                            <div style="border:1px solid ${hasSelection ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.95)'}; border-radius:10px; padding:10px; background: rgba(15,23,42,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px ${hasSelection ? 'rgba(34,197,94,0.28)' : 'rgba(239,68,68,0.24)'};">
                                 <div style="font-size:10px; color:#f8fafc; font-weight:900; letter-spacing:0.12em; text-transform:uppercase;">${slot.label}</div>
-                                <div style="font-size:11px; color:${hasSelection ? '#86efac' : '#94a3b8'}; margin-top:6px;">${hasSelection ? 'Foto fija elegida' : 'Modo aleatorio'}</div>
+                                <div style="font-size:11px; color:${hasSelection ? '#86efac' : '#fca5a5'}; margin-top:6px; font-weight:700;">
+                                    Estado: ${hasSelection ? 'Asignada' : 'No asignada'}
+                                </div>
+                                <div style="font-size:10px; color:${hasSelection ? '#86efac' : '#fca5a5'}; margin-top:4px;">
+                                    ${hasSelection ? '✅ Foto asignada' : '❌ Sin foto asignada'}
+                                </div>
                                 <button
                                     type="button"
                                     onclick="event.stopPropagation(); window.opener.postMessage({type: 'CLEAR_BATTLE_PHOTO_PREF', id: '${editingId}', slotId: '${slot.id}'}, '*');"
@@ -783,7 +930,8 @@
                             </div>
                         `;
                     }).join('')}
-                </div>
+                    </div>
+                </details>
 
                 <div class="grid" id="galleryGrid">
                     ${fotosGaleria.length ? fotosGaleria.map((foto, index) => {
@@ -914,20 +1062,47 @@
                     const viewerNextButton = document.getElementById('viewerNext');
                     const viewerPlayToggleButton = document.getElementById('viewerPlayToggle');
                     const viewerRandomToggleButton = document.getElementById('viewerRandomToggle');
+                    const VALID_FILE_MIME_PREFIXES = ['image/', 'video/'];
+                    const VALID_FILE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'ogg', 'mov', 'm4v'];
                     let currentViewerIndex = 0;
                     let viewerAutoplay = false;
                     let viewerRandom = false;
                     let viewerAutoplayTimeout = null;
+                    let activeSlotSelectionId = '';
+
+                    function isAllowedFileType(file) {
+                        if (!file) return false;
+                        const mime = String(file.type || '').toLowerCase();
+                        const ext = String(file.name || '').split('.').pop()?.toLowerCase() || '';
+                        return VALID_FILE_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || VALID_FILE_EXTENSIONS.includes(ext);
+                    }
+
+                    function openSlotActionModal(slotId, mode = '') {
+                        activeSlotSelectionId = slotId || '';
+                        const modal = document.getElementById('miModal');
+                        const galleryHint = document.getElementById('slotGalleryHint');
+                        const slotInput = document.getElementById('slotSelectionId');
+                        if (slotInput) slotInput.value = activeSlotSelectionId;
+                        if (galleryHint) {
+                            galleryHint.style.display = mode === 'gallery' && slotId !== 'perfil' ? 'block' : 'none';
+                        }
+                        if (modal) modal.style.display = 'block';
+                    }
 
                     function resetAddMediaModalFields() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
                         const localInput = document.getElementById('nuevoArchivoLocal');
                         const labelInput = document.getElementById('nuevaFotoEtiqueta');
                         const mediaTypeInput = document.getElementById('nuevoArchivoTipo');
+                        const slotInput = document.getElementById('slotSelectionId');
                         if (urlInput) urlInput.value = '';
                         if (localInput) localInput.value = '';
                         if (labelInput) labelInput.value = '${GALLERY_LABELS[0]}';
                         if (mediaTypeInput) mediaTypeInput.value = 'image';
+                        if (slotInput) slotInput.value = '';
+                        const galleryHint = document.getElementById('slotGalleryHint');
+                        if (galleryHint) galleryHint.style.display = 'none';
+                        activeSlotSelectionId = '';
                     }
 
                     function addMediaFromModal() {
@@ -939,15 +1114,23 @@
                         const selectedFile = localInput?.files?.[0];
                         const mediaType = mediaTypeInput?.value || 'image';
                         const label = labelInput?.value || '${GALLERY_LABELS[0]}';
+                        const slotSelectionId = activeSlotSelectionId || document.getElementById('slotSelectionId')?.value || '';
 
                         const postMedia = (finalUrl, finalType) => {
                             if (!finalUrl) return;
                             window.opener.postMessage({ type: 'ADD_IMAGE', url: finalUrl, label, mediaType: finalType, id: '${editingId}' }, '*');
+                            if (slotSelectionId) {
+                                window.opener.postMessage({ type: 'SET_BATTLE_PHOTO_PREF_BY_URL', id: '${editingId}', slotId: slotSelectionId, url: finalUrl, mediaType: finalType, label }, '*');
+                            }
                             document.getElementById('miModal').style.display = 'none';
                             resetAddMediaModalFields();
                         };
 
                         if (selectedFile) {
+                            if (!isAllowedFileType(selectedFile)) {
+                                alert('Tipo de archivo no válido. Usá imagen o video.');
+                                return;
+                            }
                             const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
                             const reader = new FileReader();
                             reader.onload = () => postMedia(String(reader.result || ''), inferredType);
@@ -1147,17 +1330,9 @@
         "OTRO":{ color: "#ffffff", sombra: "rgba(255,255,255,0.8)" }, // Blanco
         "DEFAULT": { color: "#334155", sombra: "transparent" }
                 };
-            const [minEdad, setMinEdad] = useState(18);
-            const [maxEdad, setMaxEdad] = useState(60);
 
+            const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
-            const [personajesSearchTerm, setPersonajesSearchTerm] = useState('');
-            const [selectedPersonajeId, setSelectedPersonajeId] = useState(null);
-            const [personajesDetailSection, setPersonajesDetailSection] = useState(null);
-            const [personajesSaving, setPersonajesSaving] = useState(false);
-            const [personajesNewMediaUrl, setPersonajesNewMediaUrl] = useState('');
-            const [personajesNewMediaType, setPersonajesNewMediaType] = useState('image');
-            const [personajesNewMediaLabel, setPersonajesNewMediaLabel] = useState(GALLERY_LABELS[0]);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
@@ -1165,8 +1340,10 @@
             const [arenaGlobalState, setArenaGlobalState] = useState({});
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
+            const [scoreBreakdownItemDetail, setScoreBreakdownItemDetail] = useState(null);
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
             const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isCatModalOpen, setIsCatModalOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
             const [contextMenuProfileId, setContextMenuProfileId] = useState(null);
             const [contextProfile, setContextProfile] = useState(null);
@@ -1178,13 +1355,7 @@
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
             const [scoreBreakdownModal, setScoreBreakdownModal] = useState({ isOpen: false, profile: null, category: null });
-            const [urlInput, setUrlInput] = useState('');
-            const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
-            const [galleryMediaType, setGalleryMediaType] = useState('image');
-            const [anonimoUrlInput, setAnonimoUrlInput] = useState('');
-            const [anonimoGalleryLabel, setAnonimoGalleryLabel] = useState(GALLERY_LABELS[0]);
-            const [anonimoGalleryMediaType, setAnonimoGalleryMediaType] = useState('image');
-            const [anonimoMediaItems, setAnonimoMediaItems] = useState([]);
+            const [scorePanelModal, setScorePanelModal] = useState({ isOpen: false, profile: null });
             const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
             const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
             const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
@@ -1194,10 +1365,15 @@
             const [isGalleryPlaying, setIsGalleryPlaying] = useState(false);
             const [isGalleryRandom, setIsGalleryRandom] = useState(false);
             const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
-            const [escenas, setEscenas] = useState([]);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
             const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
+            const [galleryUrlDraft, setGalleryUrlDraft] = useState('');
+            const [galleryEditorError, setGalleryEditorError] = useState('');
+            const [isSavingGalleryEditor, setIsSavingGalleryEditor] = useState(false);
+            const [tallerSearchTerm, setTallerSearchTerm] = useState('');
+            const [selectedTallerProfileId, setSelectedTallerProfileId] = useState('');
+            const [isMultimediaModalOpen, setIsMultimediaModalOpen] = useState(false);
             const [isBrokenGalleryModalOpen, setIsBrokenGalleryModalOpen] = useState(false);
             const [brokenGalleryMap, setBrokenGalleryMap] = useState({});
             const [brokenGalleryUrlDrafts, setBrokenGalleryUrlDrafts] = useState({});
@@ -1205,16 +1381,21 @@
             const [brokenGalleryEditingMap, setBrokenGalleryEditingMap] = useState({});
             const galleryPlaybackTimeoutRef = useRef(null);
 
-            const [filters, setFilters] = useState({
-                nacionalidad: 'Todas',
-                profesion: 'Todas',
-                edad: 'Todas',
-                ciudad: 'Todas',
-                scoreAttr: 'Cualquiera',
-                scoreOp: 'Superior a',
-                scoreVal: ''
-            });
-
+const getInitialCatFormData = () => ({
+    label: '',
+    emoji: '📁',
+    coverImg: '',
+    reglas: {
+        nacionalidades: [],
+        profesiones: [],
+        ciudades: [],
+        edadMin: '',
+        edadMax: '',
+        caracteristica: 'Rostro',
+        operador: 'Superior a',
+        umbral: ''
+    }
+});
         const getEmptyProfileFormData = () => ({
                 nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
                 galeria: { fotos: [], gifs: [], videos: [] },
@@ -1260,6 +1441,15 @@
             const openProfileEditor = (contextProfile = {}) => {
                 setFormData(mapProfileToFormData(contextProfile));
                 setEditingId(contextProfile.firebaseId || contextProfile.id || null);
+                setIsModalOpen(true);
+            };
+            const openNewProfileForm = (prefilledProfession = '') => {
+                const normalizedProfession = String(prefilledProfession || '').trim();
+                setEditingId(null);
+                setFormData({
+                    ...getEmptyProfileFormData(),
+                    profesion: normalizedProfession
+                });
                 setIsModalOpen(true);
             };
             const profileCompletionRows = useMemo(() => {
@@ -1317,43 +1507,6 @@
                 return updatedItems;
             };
 
-            const submitGalleryImage = async ({ profileId = editingId, url = urlInput, label = galleryLabel, type = galleryMediaType, successMessage } = {}) => {
-                if (!profileId || !(url || '').trim()) return;
-
-                try {
-                    await addGalleryImage({ profileId, url, tag: type === 'video' ? 'videos' : 'fotos', label, type });
-                    setUrlInput('');
-                    setGalleryLabel(GALLERY_LABELS[0]);
-                    setGalleryMediaType('image');
-
-
-                    if (successMessage) {
-                        alert(successMessage);
-                    }
-                } catch (error) {
-                    console.error('Error al guardar archivo en galería:', error);
-                }
-            };
-            const submitEscena = async () => {
-                const normalizedUrl = (urlInput || '').trim();
-                if (!normalizedUrl) return;
-
-                const normalizedLabel = GALLERY_LABELS.includes(galleryLabel) ? galleryLabel : '';
-                const normalizedType = detectGalleryItemType(normalizedUrl, galleryMediaType);
-                try {
-                    await db.ref('escenas').push({
-                        url: normalizedUrl,
-                        label: normalizedLabel,
-                        type: normalizedType,
-                        createdAt: Date.now()
-                    });
-                    setUrlInput('');
-                    setGalleryLabel(GALLERY_LABELS[0]);
-                    setGalleryMediaType('image');
-                } catch (error) {
-                    console.error('Error al guardar escena:', error);
-                }
-            };
             const updateGalleryItemLabel = async ({ profileId, sourceTag, sourceIndex, label }) => {
                 if (!profileId || !sourceTag || !Number.isInteger(sourceIndex)) return;
                 const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
@@ -1478,34 +1631,6 @@
                     event.target.value = '';
                 }
             };
-            const handleLocalGalleryFileUpload = async (event) => {
-                const selectedFile = event.target.files?.[0];
-                if (!selectedFile) return;
-                try {
-                    const dataUrl = await readFileAsDataUrl(selectedFile);
-                    const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
-                    setUrlInput(dataUrl);
-                    setGalleryMediaType(inferredType);
-                } catch (error) {
-                    console.error('Error al cargar archivo local de galería:', error);
-                } finally {
-                    event.target.value = '';
-                }
-            };
-            const handleLocalAnonimoFileUpload = async (event) => {
-                const selectedFile = event.target.files?.[0];
-                if (!selectedFile) return;
-                try {
-                    const dataUrl = await readFileAsDataUrl(selectedFile);
-                    const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
-                    setAnonimoUrlInput(dataUrl);
-                    setAnonimoGalleryMediaType(inferredType);
-                } catch (error) {
-                    console.error('Error al cargar archivo local anónimo:', error);
-                } finally {
-                    event.target.value = '';
-                }
-            };
             const handleDelete = async (id, e) => {
                 e.stopPropagation(); // Esto es para que no se abra la foto cuando hacés click en la cruz
                 if(confirm('¿Estás seguro de que querés eliminar esto, corazón?')) {
@@ -1517,11 +1642,14 @@
                 }
             };
 
+            const [catFormData, setCatFormData] = useState(getInitialCatFormData());
+            const resetCatForm = () => setCatFormData(getInitialCatFormData());
+
             useEffect(() => {
                 if (window.lucide) {
                     window.lucide.createIcons();
                 }
-            }, [activeTab, isModalOpen, perfiles, selectedCategory, filters]);
+            }, [activeTab, isModalOpen, isCatModalOpen, perfiles, selectedCategory, categorias]);
 
             useEffect(() => {
                 if (galleryWindowRef.current && !galleryWindowRef.current.closed && editingId) {
@@ -1625,6 +1753,24 @@
                         }));
                     }
 
+                    if (event.data.type === 'SET_BATTLE_PHOTO_PREF_BY_URL') {
+                        const { id, slotId, url, mediaType, label } = event.data;
+                        const slotConfig = getBattleSlotById(slotId);
+                        const normalizedUrl = String(url || '').trim();
+                        if (!id || !slotConfig || !normalizedUrl) return;
+                        if (mediaType === 'video') return;
+                        if (!slotConfig.labels.includes(label)) return;
+                        const prefsRef = db.ref(`perfiles/${id}/batallaFotosPreferidas/${slotId}`);
+                        await prefsRef.set(normalizedUrl);
+                        setFormData(prev => ({
+                            ...prev,
+                            batallaFotosPreferidas: {
+                                ...sanitizeBattlePhotoPreferences(prev.batallaFotosPreferidas),
+                                [slotId]: normalizedUrl
+                            }
+                        }));
+                    }
+
                     if (event.data.type === 'CLEAR_BATTLE_PHOTO_PREF') {
                         const { id, slotId } = event.data;
                         const slotConfig = getBattleSlotById(slotId);
@@ -1655,32 +1801,20 @@
                         setPerfiles([]);
                     }
                 });
-                const anonimoGalleryRef = db.ref('anonimo/galeria');
-                anonimoGalleryRef.on('value', (snapshot) => {
-                    const data = snapshot.val() || {};
-                    setAnonimoMediaItems([
-                        ...(Array.isArray(data?.fotos)
-                            ? data.fotos.map((item, sourceIndex) => ({
-                                ...normalizeGalleryItem(item, 'image'),
-                                sourceTag: 'fotos',
-                                sourceIndex
-                            }))
-                            : []),
-                        ...(Array.isArray(data?.gifs)
-                            ? data.gifs.map((item, sourceIndex) => ({
-                                ...normalizeGalleryItem(item, 'image'),
-                                sourceTag: 'gifs',
-                                sourceIndex
-                            }))
-                            : []),
-                        ...(Array.isArray(data?.videos)
-                            ? data.videos.map((item, sourceIndex) => ({
-                                ...normalizeGalleryItem(item, 'video'),
-                                sourceTag: 'videos',
-                                sourceIndex
-                            }))
-                            : [])
-                    ]);
+
+                // Escuchar Categorías en tiempo real desde Firebase
+                const categoriasRef = db.ref('categorias');
+                categoriasRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const listaCats = Object.keys(data).map(key => ({
+                            ...data[key],
+                            firebaseId: key
+                        }));
+                        setCategorias(listaCats);
+                    } else {
+                        setCategorias(INITIAL_CATEGORIES);
+                    }
                 });
 
                 const arenasRef = db.ref('arenaBattleState');
@@ -1695,7 +1829,7 @@
                 return () => {
                     window.removeEventListener('message', handleMessage);
                     perfilesRef.off();
-                    anonimoGalleryRef.off();
+                    categoriasRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
                 };
@@ -1713,29 +1847,84 @@
             const getProfileScores = (profile = {}) => {
                 return { ...createZeroScores(), ...(profile?.puntuaciones || {}) };
             };
-            const getRostroScore = (profile = {}) => {
+            const SCORE_GROUP_TO_ARENAS = {
+                Rostro: ['Rostro', 'Ojos', 'Boca', 'Cabello'],
+                Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
+                Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
+            };
+            const averageScoresByKeys = (profile = {}, keys = []) => {
+                if (!Array.isArray(keys) || !keys.length) return 0;
                 const scores = getProfileScores(profile);
-                return (scores.Rostro + scores.Ojos + scores.Boca + scores.Cabello) / 4;
+                return keys.reduce((sum, key) => sum + (Number(scores[key]) || 0), 0) / keys.length;
+            };
+            const getRostroScore = (profile = {}) => {
+                return averageScoresByKeys(profile, SCORE_GROUP_TO_ARENAS.Rostro);
             };
             const getCuerpoScore = (profile = {}) => {
-                const scores = getProfileScores(profile);
-                return (scores.Cuerpo + scores.Cola + scores.Pechos + scores.Cintura + scores.Piernas + scores.Estatura) / 6;
+                return averageScoresByKeys(profile, SCORE_GROUP_TO_ARENAS.Cuerpo);
             };
             const getActitudScore = (profile = {}) => {
-                const scores = getProfileScores(profile);
-                return (scores.Sensualidad + scores.Carisma + scores.Elegancia + scores.Dulzura + scores.Talento) / 5;
+                return averageScoresByKeys(profile, SCORE_GROUP_TO_ARENAS.Actitud);
+            };
+            const getCategoryScore = (profile = {}, categoryKey = '') => {
+                if (categoryKey === 'Rostro') return getRostroScore(profile);
+                if (categoryKey === 'Cuerpo') return getCuerpoScore(profile);
+                if (categoryKey === 'Actitud') return getActitudScore(profile);
+                return 0;
             };
             const calcularPromedio = (p = {}) => {
                 // El Score Total es el promedio de las 3 categorías principales
-                const scoreTotal = (getRostroScore(p) + getCuerpoScore(p) + getActitudScore(p)) / 3;
+                const categoryScores = Object.keys(SCORE_GROUP_TO_ARENAS).map((key) => getCategoryScore(p, key));
+                const scoreTotal = categoryScores.reduce((sum, value) => sum + value, 0) / categoryScores.length;
                 return scoreTotal.toFixed(0);
+            };
+
+            const obtenerCategoriasDePerfil = (p) => {
+                const cats = [];
+                const nac = (p.nacionalidad || '').toLowerCase();
+                const prof = (p.profesion || '').toLowerCase();
+                const ciu = (p.ciudad || '').toLowerCase();
+                const edad = calcularEdad(p.fechaNacimiento);
+
+                categorias.forEach(c => {
+                    const r = c.reglas;
+                    let matches = true;
+
+                    // Filtros de texto (nacionalidad, profesión, ciudad)
+                    if (r.nacionalidades?.length > 0 && !r.nacionalidades.some(n => nac === n.toLowerCase())) matches = false;
+                    if (r.profesiones?.length > 0 && !r.profesiones.some(p => prof === p.toLowerCase())) matches = false;
+                    if (r.ciudades?.length > 0 && !r.ciudades.some(ciu_regla => ciu === ciu_regla.toLowerCase())) matches = false;
+
+                    // Filtros de edad
+                    if (r.edadMin && (edad === '?' || edad < parseInt(r.edadMin))) matches = false;
+                    if (r.edadMax && (edad === '?' || edad > parseInt(r.edadMax))) matches = false;
+
+                    // Filtro de puntuación (ej: Rostro > 8)
+                    if (r.caracteristica && r.umbral) {
+                        const score = getProfileScores(p)[r.caracteristica] || 0;
+                        const umbral = parseInt(r.umbral);
+                        if (r.operador === 'Superior a' && score <= umbral) matches = false;
+                        if (r.operador === 'Inferior a' && score >= umbral) matches = false;
+                    }
+
+                    // USAMOS firebaseId PORQUE ES EL QUE VIENE DE LA BASE DE DATOS
+                    if (matches) cats.push(c.firebaseId);
+                });
+                return cats;
             };
 
             const uniqueNacionalidades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.nacionalidad).filter(Boolean))], [perfiles]);
             const uniqueProfesiones = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.profesion).filter(Boolean))], [perfiles]);
             const uniqueCiudades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.ciudad).filter(Boolean))], [perfiles]);
+            const profileCategoryMap = useMemo(() => {
+                return (perfiles || []).reduce((acc, profile) => {
+                    if (!profile?.firebaseId) return acc;
+                    acc[profile.firebaseId] = obtenerCategoriasDePerfil(profile);
+                    return acc;
+                }, {});
+            }, [perfiles, categorias]);
             const allGalleryPhotos = useMemo(() => {
-                const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
+                return (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -1782,8 +1971,7 @@
                         })
                         .filter(Boolean);
                 });
-                return [...profileGalleryPhotos, ...(escenas || [])];
-            }, [perfiles, escenas]);
+            }, [perfiles]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
@@ -1836,26 +2024,25 @@
                         .filter(bucket => bucket.photos.length > 0);
                 }
 
-                const groupedByProfession = allGalleryPhotos.reduce((acc, photo) => {
-                    const profession = String(photo.profesion || '').trim() || 'Sin categoría';
-                    if (!acc[profession]) {
-                        acc[profession] = {
-                            id: `CATEGORIA-${profession}`,
-                            nombre: profession,
-                            profesion: 'Categoría por profesión',
-                            nacionalidad: '',
-                            fotoPerfil: photo.fotoPerfil || photo.url,
-                            photos: []
-                        };
-                    }
-                    acc[profession].photos.push(photo);
-                    return acc;
-                }, {});
+                return (categorias || [])
+                    .map((categoria) => {
+                        const categoryPhotos = allGalleryPhotos.filter((photo) => {
+                            if (!photo.profileId) return false;
+                            return (profileCategoryMap[photo.profileId] || []).includes(categoria.firebaseId);
+                        });
 
-                return Object.values(groupedByProfession)
+                        return {
+                            id: `CARPETA-${categoria.firebaseId}`,
+                            nombre: categoria.label || 'Carpeta sin nombre',
+                            profesion: 'Categoría',
+                            nacionalidad: '',
+                            fotoPerfil: categoria.coverImg || categoryPhotos[0]?.fotoPerfil || categoryPhotos[0]?.url || '',
+                            photos: categoryPhotos
+                        };
+                    })
                     .filter(bucket => bucket.photos.length > 0)
                     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
-            }, [allGalleryPhotos, galleryViewMode]);
+            }, [allGalleryPhotos, categorias, galleryViewMode, profileCategoryMap]);
             const activeGalleryBucket = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') return galleryBuckets[0] || null;
                 if (!selectedGalleryBucket) return null;
@@ -1932,22 +2119,20 @@
                 if (!selectedGalleryPhoto) {
                     setIsEditingGalleryLabel(false);
                     setGalleryLabelDraft('');
+                    setGalleryUrlDraft('');
+                    setGalleryEditorError('');
                     return;
                 }
                 setIsEditingGalleryLabel(false);
                 setGalleryLabelDraft(selectedGalleryPhoto.label || '');
+                setGalleryUrlDraft(selectedGalleryPhoto.url || '');
+                setGalleryEditorError('');
             }, [selectedGalleryPhoto]);
 
             useEffect(() => {
                 if (activeTab !== 'GALERIA') {
                     setSelectedGalleryBucket(null);
                     setSelectedGalleryIndex(null);
-                }
-            }, [activeTab]);
-            useEffect(() => {
-                if (activeTab !== 'PERSONAJES') {
-                    setSelectedPersonajeId(null);
-                    setPersonajesDetailSection(null);
                 }
             }, [activeTab]);
 
@@ -2095,6 +2280,7 @@
             const openGalleryViewer = (index, autoplay = false) => {
                 setSelectedGalleryIndex(index);
                 setIsGalleryPlaying(autoplay);
+                setIsEditingGalleryLabel(true);
             };
             const addCharacterToGallerySelection = (bucketId) => {
                 if (!bucketId) return;
@@ -2122,7 +2308,26 @@
             const showPreviousGalleryPhoto = () => setSelectedGalleryIndex((current) => clampIndex((current ?? 0) - 1, filteredGalleryPhotos.length));
             const saveSelectedGalleryLabel = async () => {
                 if (!selectedGalleryPhoto?.profileId || !selectedGalleryPhoto?.sourceTag || !Number.isInteger(selectedGalleryPhoto?.sourceIndex)) return;
+                const normalizedUrl = (galleryUrlDraft || '').trim();
+                if (!normalizedUrl) {
+                    setGalleryEditorError('La URL no puede estar vacía.');
+                    return;
+                }
+                if (isBlockedMediaUrl(normalizedUrl) || !getSafeImageSrc(normalizedUrl, '')) {
+                    setGalleryEditorError('La URL está bloqueada o no es válida.');
+                    return;
+                }
                 try {
+                    setIsSavingGalleryEditor(true);
+                    setGalleryEditorError('');
+                    if (normalizedUrl !== selectedGalleryPhoto.url) {
+                        await updateGalleryItemUrl({
+                            profileId: selectedGalleryPhoto.profileId,
+                            sourceTag: selectedGalleryPhoto.sourceTag,
+                            sourceIndex: selectedGalleryPhoto.sourceIndex,
+                            url: normalizedUrl
+                        });
+                    }
                     await updateGalleryItemLabel({
                         profileId: selectedGalleryPhoto.profileId,
                         sourceTag: selectedGalleryPhoto.sourceTag,
@@ -2131,7 +2336,10 @@
                     });
                     setIsEditingGalleryLabel(false);
                 } catch (error) {
+                    setGalleryEditorError('No se pudo guardar la edición del ítem.');
                     console.error('Error al actualizar etiqueta de la multimedia:', error);
+                } finally {
+                    setIsSavingGalleryEditor(false);
                 }
             };
             const handleBrokenDraftChange = (photoId, nextUrl) => {
@@ -2222,6 +2430,39 @@ const saveProfile = (e) => {
                         .catch(err => console.error("No pudo entrar el perfil:", err));
                 }
             };
+            const saveCategory = async (e) => {
+                e.preventDefault();
+
+                const { firebaseId, ...categoryData } = catFormData;
+                const payload = { ...categoryData, type: 'custom' };
+
+                try {
+                    if (firebaseId) {
+                        await db.ref(`categorias/${firebaseId}`).update(payload);
+                    } else {
+                        await db.ref('categorias').push(payload);
+                    }
+
+                    setIsCatModalOpen(false);
+                    resetCatForm();
+                } catch (error) {
+                    console.error("La categoría no quiso guardarse:", error);
+                }
+            };
+            const deleteCategory = async (categoryId) => {
+                if (!categoryId) return;
+
+                try {
+                    await db.ref(`categorias/${categoryId}`).remove();
+
+                    setCategorias(prev => prev.filter(c => c.firebaseId !== categoryId));
+                    setSelectedCategory(prev => prev === categoryId ? null : prev);
+                } catch (error) {
+                    console.error("No se pudo borrar la categoría:", error);
+                    alert("No se pudo borrar la carpeta. Probá de nuevo.");
+                }
+            };
+
             const requestDeleteProfile = (profile) => {
                 if (!profile?.firebaseId) return;
                 setProfileActionError('');
@@ -3084,37 +3325,58 @@ const saveProfile = (e) => {
                 const base = perfiles;
 
                 if (activeTab === 'RANKING') {
-                    return base.filter(p => {
-                        const edad = calcularEdad(p.fechaNacimiento);
-                        const matchNac = filters.nacionalidad === 'Todas' || p.nacionalidad === filters.nacionalidad;
-                        const matchProf = filters.profesion === 'Todas' || p.profesion === filters.profesion;
-                        const matchCiudad = filters.ciudad === 'Todas' || p.ciudad === filters.ciudad;
-
-                        const matchEdad = edad >= minEdad && edad <= maxEdad;
-
-
-                        let matchScore = true;
-                        if (filters.scoreAttr !== 'Cualquiera') {
-                            // Si elige Score Total usamos el promedio, si no, el atributo específico
-                            const valPerfil = filters.scoreAttr === 'promedio'
-                                ? parseFloat(calcularPromedio(p))
-                                : getProfileScores(p)[filters.scoreAttr] || 0;
-
-                            if (filters.scoreVal !== '') {
-                                const valFiltro = parseInt(filters.scoreVal);
-                                if (filters.scoreOp === 'Superior a') matchScore = valPerfil >= valFiltro;
-                                else if (filters.scoreOp === 'Inferior a') matchScore = valPerfil <= valFiltro;
-                                else if (filters.scoreOp === 'Igual a') matchScore = valPerfil === valFiltro;
-                            }
-                        }
-
-                        return matchNac && matchProf && matchEdad && matchCiudad && matchScore;
-                    }).sort((a, b) => parseFloat(calcularPromedio(b)) - parseFloat(calcularPromedio(a)));
+                    return [...base].sort((a, b) => parseFloat(calcularPromedio(b)) - parseFloat(calcularPromedio(a)));
                 }
 
+                if (activeTab === 'CATEGORIAS' && selectedCategory) {
+                    return base.filter(p => obtenerCategoriasDePerfil(p).includes(selectedCategory));
+                }
 
                 return base;
-            }, [perfiles, activeTab, filters]);
+            }, [perfiles, activeTab, selectedCategory]);
+            const tallerProfiles = useMemo(() => {
+                const normalizedSearch = String(tallerSearchTerm || '').trim().toLowerCase();
+                const normalizeProfession = (profile) => {
+                    const professionFields = [profile?.profesion, profile?.profesiones];
+                    return professionFields
+                        .flatMap((value) => {
+                            if (Array.isArray(value)) return value;
+                            if (typeof value === 'string') return value.split(',');
+                            return [];
+                        })
+                        .map((entry) => String(entry || '').trim())
+                        .filter(Boolean)
+                        .join(' ');
+                };
+                const hasCoreProfileData = (profile) => {
+                    if (!profile || typeof profile !== 'object') return false;
+                    return [
+                        String(profile.nombre || '').trim(),
+                        String(profile.nacionalidad || '').trim(),
+                        String(profile.ciudad || '').trim(),
+                        normalizeProfession(profile),
+                        String(profile.fechaNacimiento || '').trim(),
+                        String(profile.estaturaCm || '').trim()
+                    ].some(Boolean) || (Array.isArray(profile.fotos) && profile.fotos.some(Boolean));
+                };
+
+                return [...(perfiles || [])]
+                    .filter((profile) => {
+                        if (!hasCoreProfileData(profile)) return false;
+                        if (!normalizedSearch) return true;
+                        const haystack = [
+                            String(profile.nombre || '').trim(),
+                            String(profile.nacionalidad || '').trim(),
+                            normalizeProfession(profile)
+                        ].join(' ').toLowerCase();
+                        return haystack.includes(normalizedSearch);
+                    })
+                    .sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' }));
+            }, [perfiles, tallerSearchTerm]);
+            const selectedTallerProfile = useMemo(
+                () => tallerProfiles.find((profile) => profile?.firebaseId === selectedTallerProfileId) || null,
+                [tallerProfiles, selectedTallerProfileId]
+            );
             const battleScopeOptions = useMemo(() => {
                 if (!selectedBattleScope) return [];
                 return getBattleScopeOptions(perfiles, selectedBattleScope);
@@ -3139,6 +3401,16 @@ const saveProfile = (e) => {
                 }
                 return Number(profile.puntuaciones?.[key] || 0);
             };
+            const getDisplayedRankingScore = (profile) => {
+                if (sortBy === 'promedio') return calcularPromedio(profile);
+                if (sortBy === 'Rostro') return getRostroScore(profile).toFixed(0);
+                if (sortBy === 'Cuerpo') return getCuerpoScore(profile).toFixed(0);
+                if (sortBy === 'Actitud') return getActitudScore(profile).toFixed(0);
+                if (CARACTERISTICAS.includes(sortBy)) {
+                    return Number(profile.puntuaciones?.[sortBy] || 0).toFixed(0);
+                }
+                return calcularPromedio(profile);
+            };
 
             const toggleSort = (key, defaultDirection = 'asc') => {
                 if (sortBy === key) {
@@ -3148,13 +3420,6 @@ const saveProfile = (e) => {
                 setSortBy(key);
                 setSortDirection(defaultDirection);
             };
-
-            const SCORE_GROUP_TO_ARENAS = {
-                Rostro: ['Rostro', 'Ojos', 'Boca', 'Cabello'],
-                Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
-                Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
-            };
-            const CHARACTERISTIC_GROUPS = Object.entries(SCORE_GROUP_TO_ARENAS);
 
             const getScoreBreakdownByCategory = (profileId, categoryKey) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
@@ -3193,52 +3458,53 @@ const saveProfile = (e) => {
                     losses: getSortedNames(lossIds)
                 };
             };
-            const getArenaBreakdownForProfile = (profileId, arenaName) => {
-                if (!profileId || !arenaName) return { wins: [], losses: [] };
-                const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
-                const winIds = new Set();
-                const lossIds = new Set();
 
-                Object.values(arenaMatchups).forEach((match) => {
-                    if (!match || typeof match !== 'object') return;
-                    if (match.winnerId === profileId && match.loserId) winIds.add(match.loserId);
-                    if (match.loserId === profileId && match.winnerId) lossIds.add(match.winnerId);
-                });
+            const getItemBattleBreakdown = (profileId, arenaName) => {
+                const safeArenaName = String(arenaName || '').trim();
+                const selectedProfileId = String(profileId || '').trim();
+                if (!safeArenaName || !selectedProfileId) {
+                    return { arenaName: safeArenaName, wins: [], losses: [] };
+                }
 
+                const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(safeArenaName)]?.matchups || {};
                 const profileNameById = new Map(
                     (perfiles || [])
                         .filter((profile) => profile?.firebaseId)
                         .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
                 );
-                const normalizeNames = (idsSet) => [...idsSet]
-                    .map((id) => profileNameById.get(id))
+                const mapBattle = ([pairKey, match]) => {
+                    if (!match || typeof match !== 'object') return null;
+                    const winnerId = String(match.winnerId || '').trim();
+                    const loserId = String(match.loserId || '').trim();
+                    if (!winnerId || !loserId) return null;
+
+                    const isWin = winnerId === selectedProfileId;
+                    const isLoss = loserId === selectedProfileId;
+                    if (!isWin && !isLoss) return null;
+
+                    const opponentId = isWin ? loserId : winnerId;
+                    return {
+                        pairKey,
+                        arenaName: safeArenaName,
+                        profileId: selectedProfileId,
+                        opponentId,
+                        opponentName: profileNameById.get(opponentId) || 'Sin nombre',
+                        winnerId,
+                        loserId
+                    };
+                };
+
+                const battles = Object.entries(arenaMatchups)
+                    .map(mapBattle)
                     .filter(Boolean)
-                    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+                    .sort((a, b) => a.opponentName.localeCompare(b.opponentName, 'es', { sensitivity: 'base' }));
 
                 return {
-                    wins: normalizeNames(winIds),
-                    losses: normalizeNames(lossIds)
+                    arenaName: safeArenaName,
+                    wins: battles.filter((battle) => battle.winnerId === selectedProfileId),
+                    losses: battles.filter((battle) => battle.loserId === selectedProfileId)
                 };
             };
-            const selectedPersonaje = useMemo(
-                () => (perfiles || []).find((profile) => profile?.firebaseId === selectedPersonajeId) || null,
-                [perfiles, selectedPersonajeId]
-            );
-            const personajesSearchResults = useMemo(() => {
-                const query = String(personajesSearchTerm || '').trim().toLowerCase();
-                const baseProfiles = [...(perfiles || [])].sort((a, b) => (a?.nombre || '').localeCompare((b?.nombre || ''), 'es', { sensitivity: 'base' }));
-                if (!query) return baseProfiles;
-                return baseProfiles.filter((profile) => {
-                    const edad = calcularEdad(profile?.fechaNacimiento);
-                    const candidateText = [
-                        profile?.nombre || '',
-                        profile?.profesion || '',
-                        profile?.nacionalidad || '',
-                        Number.isFinite(edad) ? String(edad) : ''
-                    ].join(' ').toLowerCase();
-                    return candidateText.includes(query);
-                });
-            }, [perfiles, personajesSearchTerm]);
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
                 const aValue = getSortValue(a, sortBy);
@@ -3258,18 +3524,10 @@ const saveProfile = (e) => {
                 return sortDirection === 'asc' ? result : -result;
             });
             return (
-                <div className="app-space-theme flex h-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
+                <div className="app-space-theme flex h-screen w-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
                     {isSidebarOpen && (
-                    <aside className="hud-frame hud-frame--panel w-72 theme-surface-card stone-wall-surface border-r theme-border-secondary flex flex-col p-8 z-20 shadow-xl overflow-y-auto relative">
+                    <aside className="hud-frame hud-frame--panel w-72 shrink-0 theme-surface-card stone-wall-surface border-r theme-border-secondary flex flex-col p-8 z-20 shadow-xl overflow-y-auto relative">
                         <div className="corner-ember-glow corner-ember-glow--left corner-ember-glow--top" aria-hidden="true"></div>
-                        <button
-                            onClick={() => setIsSidebarOpen(false)}
-                            className="absolute top-4 right-4 btn-metal btn-metal--silver rounded-full p-2 text-slate-900"
-                            aria-label="Replegar menú lateral"
-                            title="Replegar menú lateral"
-                        >
-                            <LucideIcon name="panel-left-close" size={16} />
-                        </button>
                         <div className="mb-12 text-center flex-shrink-0">
                             <h1 className="neon-sign neon-sign--cyan text-5xl font-black text-[var(--metal-gold)] italic tracking-tighter leading-none">G2</h1>
                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-2">Elite Database</p>
@@ -3279,8 +3537,9 @@ const saveProfile = (e) => {
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
+                                { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
                                 { id: 'GALERIA', icon: 'images', label: 'Galería' },
-                                { id: 'ANONIMO', icon: 'ghost', label: 'Anónimo' }
+                                { id: 'TALLER', icon: 'hammer', label: 'Taller' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -3298,62 +3557,8 @@ const saveProfile = (e) => {
                             ))}
                         </nav>
 
-                        {activeTab === 'RANKING' && (
-                            <div className="hud-frame hud-frame--panel space-y-6 mb-8 p-6 theme-surface-soft rounded-2xl gothic-frame gothic-frame--secondary animate-in fade-in slide-in-from-bottom-2 duration-500">
-                                <h4 className="text-[10px] font-black text-[var(--metal-gold)] uppercase tracking-widest flex items-center gap-2">
-                                    <LucideIcon name="filter" size={12} /> Filtros de Ranking
-                                </h4>
-
-                                <div className="space-y-3">
-                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.nacionalidad} onChange={e => setFilters({...filters, nacionalidad: e.target.value})}>
-                                        <option value="Todas">Nacionalidad: Todas</option>
-                                        {uniqueNacionalidades.filter(n => n !== 'Todas').map(n => <option key={n} value={n}>{n}</option>)}
-                                    </select>
-
-                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.profesion} onChange={e => setFilters({...filters, profesion: e.target.value})}>
-                                        <option value="Todas">Profesión: Todas</option>
-                                        {uniqueProfesiones.filter(p => p !== 'Todas').map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
-
-                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.ciudad} onChange={e => setFilters({...filters, ciudad: e.target.value})}>
-                                        <option value="Todas">Ciudad: Todas</option>
-                                        {uniqueCiudades.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-
-                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.edad} onChange={e => setFilters({...filters, edad: e.target.value})}>
-                                        <option value="Todas">Edad: Todas</option>
-                                        <option value="Menores de 30">Menores de 30</option>
-                                        <option value="Mayores de 30">Mayores de 30</option>
-                                    </select>
-
-                                    <div className="pt-2 border-t theme-border-secondary mt-4">
-                                        <p className="text-[9px] font-black text-slate-500 mb-2 uppercase tracking-tighter">Filtro por Atributo</p>
-                                        <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 mb-2" value={filters.scoreAttr} onChange={e => setFilters({...filters, scoreAttr: e.target.value})}>
-                                            <option>Cualquiera</option>
-                                            {CARACTERISTICAS.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                        {filters.scoreAttr !== 'Cualquiera' && (
-                                            <div className="flex gap-2">
-                                                <select className="flex-1 theme-surface-card border theme-border-secondary p-2 rounded-xl text-[10px] font-bold outline-none text-slate-300" value={filters.scoreOp} onChange={e => setFilters({...filters, scoreOp: e.target.value})}>
-                                                    <option>Superior a</option>
-                                                    <option>Inferior a</option>
-                                                    <option>Igual a</option>
-                                                </select>
-                                                <input type="number" placeholder="0-10" className="w-16 theme-surface-card border theme-border-secondary p-2 rounded-xl text-[10px] font-bold outline-none text-[var(--metal-gold)]" value={filters.scoreVal} onChange={e => setFilters({...filters, scoreVal: e.target.value})} />
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <button onClick={() => setFilters({nacionalidad:'Todas', profesion:'Todas', edad:'Todas', ciudad:'Todas', scoreAttr:'Cualquiera', scoreOp:'Superior a', scoreVal:''})} className="w-full text-[9px] font-black text-slate-600 hover:text-[var(--metal-gold)] uppercase tracking-tighter transition-colors">Limpiar Filtros</button>
-                            </div>
-                        )}
-
                         <button
-                            onClick={() => {
-                                setEditingId(null);
-                                setFormData(getEmptyProfileFormData());
-                                setIsModalOpen(true);
-                            }}
+                            onClick={() => openNewProfileForm()}
                             className="btn-metal btn-metal--gold py-5 rounded-[2.2rem] text-[11px] flex items-center justify-center gap-2 flex-shrink-0"
                         >
                             <LucideIcon name="plus" size={16} /> Nuevo Perfil
@@ -3361,25 +3566,169 @@ const saveProfile = (e) => {
                     </aside>
                     )}
 
-                    <main className="flex-1 flex flex-col overflow-hidden bg-[#020617] stone-wall-surface relative">
-                        <header className="hud-frame hud-frame--header h-24 panel-frosted stone-wall-surface border-b theme-border-secondary flex items-center px-12 justify-between z-10 flex-shrink-0 relative">
-                            <div className="corner-ember-glow corner-ember-glow--left corner-ember-glow--top" aria-hidden="true"></div>
-                            <div className="corner-ember-glow corner-ember-glow--right corner-ember-glow--top" aria-hidden="true"></div>
-                            <div className="flex items-center gap-4 w-full max-w-xl">
-                                <button
-                                    onClick={() => setIsSidebarOpen(prev => !prev)}
-                                    className="btn-metal btn-metal--silver rounded-full p-3 text-slate-900 flex-shrink-0"
-                                    aria-label={isSidebarOpen ? 'Replegar menú lateral' : 'Desplegar menú lateral'}
-                                    title={isSidebarOpen ? 'Replegar menú lateral' : 'Desplegar menú lateral'}
-                                >
-                                    <LucideIcon name={isSidebarOpen ? 'panel-left-close' : 'panel-left-open'} size={18} />
-                                </button>
-                            </div>
-                        </header>
+                    <main className="flex-1 min-w-0 w-full flex flex-col overflow-hidden bg-[#020617] stone-wall-surface relative">
+                        <button
+                            onClick={() => setIsSidebarOpen(prev => !prev)}
+                            className="sidebar-screen-toggle btn-metal btn-metal--silver rounded-full text-slate-900"
+                            aria-label={isSidebarOpen ? 'Replegar menú lateral' : 'Desplegar menú lateral'}
+                            title={isSidebarOpen ? 'Replegar menú lateral' : 'Desplegar menú lateral'}
+                        >
+                            <LucideIcon name={isSidebarOpen ? 'panel-left-close' : 'panel-left-open'} size={12} />
+                        </button>
 
                         <div className="hud-section flex-1 overflow-y-auto p-12 relative z-10 stone-wall-surface">
                             <div className="corner-ember-glow corner-ember-glow--left corner-ember-glow--top" aria-hidden="true"></div>
                             <div className="corner-ember-glow corner-ember-glow--right corner-ember-glow--top" aria-hidden="true"></div>
+
+                    {/* VISTA TALLER (VACÍA POR AHORA) */}
+                    {activeTab === 'TALLER' && (
+                        <div className="space-y-8 animate-in fade-in duration-500">
+                            <div className="space-y-2">
+                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Taller</h2>
+                            </div>
+
+                            <div className="max-w-2xl">
+                                <input
+                                    id="tallerSearchInput"
+                                    type="text"
+                                    value={tallerSearchTerm}
+                                    onChange={(event) => setTallerSearchTerm(event.target.value)}
+                                    placeholder="Ej: Argentina, Modelo, Lucía..."
+                                    aria-label="Buscar perfiles del taller"
+                                    className="w-full rounded-2xl border border-cyan-200/30 bg-slate-950/70 px-5 py-3 text-sm text-slate-100 outline-none transition-all focus:border-cyan-300/70 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+                                {tallerProfiles.map((p) => {
+                                    const profKey = p.profesion?.toUpperCase() || 'DEFAULT';
+                                    const neonClass = (typeof neonColors !== 'undefined' && neonColors[profKey]) ? neonColors[profKey] : { color: '#06b6d4', sombra: 'rgba(6,182,212,0.5)' };
+                                    const isSelected = selectedTallerProfileId && selectedTallerProfileId === p.firebaseId;
+                                    return (
+                                        <button
+                                            key={p.firebaseId || p.nombre}
+                                            type="button"
+                                            onClick={() => setSelectedTallerProfileId(p.firebaseId || '')}
+                                            className={`profile-card rounded-2xl p-4 relative overflow-hidden text-left transition-all ${isSelected ? 'taller-card--selected' : ''}`}
+                                        >
+                                            <div className="w-full aspect-[4/5] rounded-xl overflow-hidden mb-4 bg-slate-900/70">
+                                                <img
+                                                    src={p.fotos?.[0] || 'https://via.placeholder.com/400x500'}
+                                                    alt={p.nombre || 'Personaje'}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                />
+                                            </div>
+                                            <h3 className="text-lg font-black text-white uppercase tracking-wide truncate">{p.nombre || 'Sin nombre'}</h3>
+                                            <p className="text-xs text-slate-300 truncate">{p.nacionalidad || 'Nacionalidad no definida'}</p>
+                                            <p
+                                                className="text-[10px] uppercase font-bold tracking-widest mt-2 truncate"
+                                                style={{ color: neonClass.color, textShadow: `0 0 12px ${neonClass.sombra}` }}
+                                            >
+                                                {p.profesion || 'Profesión no definida'}
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {!tallerProfiles.length && (
+                                <div className="rounded-2xl border border-slate-500/30 bg-slate-900/50 px-6 py-8 text-center text-sm text-slate-300">
+                                    No hay personajes que coincidan con la búsqueda.
+                                </div>
+                            )}
+
+                            {selectedTallerProfile && (
+                                <div
+                                    className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm px-4 py-8"
+                                    onClick={() => setSelectedTallerProfileId('')}
+                                    role="presentation"
+                                >
+                                    <section
+                                        className="taller-detail-panel rounded-[2rem] p-8 md:p-10 relative overflow-hidden w-full max-w-5xl max-h-[90vh] overflow-y-auto"
+                                        onClick={(event) => event.stopPropagation()}
+                                        role="dialog"
+                                        aria-modal="true"
+                                        aria-label="Ficha del personaje"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedTallerProfileId('')}
+                                            className="absolute top-4 right-4 w-10 h-10 rounded-full border border-cyan-200/35 bg-slate-900/80 text-slate-100 flex items-center justify-center hover:bg-slate-800/90 transition"
+                                            aria-label="Cerrar ficha"
+                                        >
+                                            <LucideIcon name="x" size={18} />
+                                        </button>
+                                        <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,320px),1fr] gap-8 items-start">
+                                            <div className="taller-detail-avatar rounded-[1.8rem] overflow-hidden border border-cyan-200/35">
+                                                <img
+                                                    src={selectedTallerProfile.fotos?.[0] || 'https://via.placeholder.com/500x700'}
+                                                    alt={selectedTallerProfile.nombre || 'Perfil seleccionado'}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            </div>
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-200/90 font-black">Ficha del personaje</p>
+                                                    <h3 className="taller-detail-title text-3xl md:text-4xl font-black uppercase mt-2">
+                                                        {selectedTallerProfile.nombre || 'Sin nombre'}
+                                                    </h3>
+                                                    <p className="text-sm text-slate-300 mt-3">Perfil destacado del Taller con identidad metalizada y luces neón.</p>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <article className="taller-data-chip"><span>Nacionalidad</span><strong>{selectedTallerProfile.nacionalidad || 'No definida'}</strong></article>
+                                                    <article className="taller-data-chip"><span>Edad</span><strong>{calcularEdad(selectedTallerProfile.fechaNacimiento)} años</strong></article>
+                                                    <article className="taller-data-chip"><span>Nacimiento</span><strong>{selectedTallerProfile.fechaNacimiento || 'No informado'}</strong></article>
+                                                    <article className="taller-data-chip"><span>Profesión</span><strong>{selectedTallerProfile.profesion || 'No definida'}</strong></article>
+                                                    <article className="taller-data-chip"><span>Ciudad</span><strong>{selectedTallerProfile.ciudad || 'No definida'}</strong></article>
+                                                    <article className="taller-data-chip"><span>Estatura</span><strong>{selectedTallerProfile.estaturaCm ? `${selectedTallerProfile.estaturaCm} cm` : 'No informada'}</strong></article>
+                                                </div>
+                                                <div className="pt-2 space-y-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedTallerProfileId('');
+                                                            openProfileEditor(selectedTallerProfile);
+                                                        }}
+                                                        className="w-full btn-metal btn-metal--gold py-3 rounded-xl text-xs flex items-center justify-center gap-2"
+                                                    >
+                                                        <LucideIcon name="pencil" size={14} />
+                                                        Editar ficha completa
+                                                    </button>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                openSimpleTitleWindow('PUNTAJES');
+                                                            }}
+                                                            className="btn-metal py-3 rounded-xl text-[11px] font-black tracking-wide uppercase"
+                                                        >
+                                                            Puntajes
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setIsMultimediaModalOpen(true);
+                                                            }}
+                                                            className="btn-metal py-3 rounded-xl text-[11px] font-black tracking-wide uppercase"
+                                                        >
+                                                            Multimedia
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                            )}
+                            <MultimediaModal
+                                isOpen={isMultimediaModalOpen}
+                                profile={selectedTallerProfile}
+                                onClose={() => setIsMultimediaModalOpen(false)}
+                            />
+                        </div>
+                    )}
+
 
    {/* 1. VISTA EXPLORAR (CARPETAS POR PROFESIÓN) */}
                     {activeTab === 'EXPLORAR' && !selectedCategory && (
@@ -3435,25 +3784,59 @@ const saveProfile = (e) => {
             <div
                 className="hud-frame hud-frame--panel profession-banner flex items-center justify-between p-6 rounded-2xl gothic-frame gothic-frame--ornate gothic-frame--grand"
                 style={{
-                    '--banner-color': getProfessionCardVisual(selectedCategory).baseColor
+                    '--banner-color': (activeTab === 'CATEGORIAS'
+                        ? 'rgba(148, 163, 184, 0.8)'
+                        : getProfessionCardVisual(selectedCategory).baseColor)
                 }}
             >
-                <button
-                    onClick={() => setSelectedCategory(null)}
-                    className="group flex items-center gap-3 text-[var(--metal-gold)] font-black text-xs uppercase tracking-widest"
-                >
-                    <div className="back-btn-silver p-2 rounded-xl group-hover:text-white transition-all">
-                        <i data-lucide="arrow-left" className="w-4 h-4"></i>
-                    </div>
-                    Volver
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setSelectedCategory(null)}
+                        className="group flex items-center"
+                        aria-label="Volver"
+                        title="Volver"
+                    >
+                        <div className="back-btn-silver p-2 rounded-xl text-slate-400 group-hover:text-slate-200 transition-all">
+                            <i data-lucide="arrow-left" className="w-4 h-4"></i>
+                        </div>
+                    </button>
+                    <button
+                        onClick={() => openNewProfileForm(activeTab === 'CATEGORIAS' ? '' : selectedCategory)}
+                        className="w-9 h-9 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-xl leading-none flex items-center justify-center shadow-[0_0_14px_rgba(16,185,129,0.45)] transition-all"
+                        aria-label="Agregar nuevo perfil"
+                        title="Agregar nuevo perfil"
+                    >
+                        +
+                    </button>
+                </div>
                 <h2 className="neon-sign neon-sign--magenta font-title text-6xl font-black italic text-white tracking-[0.08em] leading-none">
-                    {selectedCategory}
-                </h2>
+    {/* Si estamos en la pestaña de categorías, buscamos el nombre lindo. Si no, mostramos la profesión directamente */}
+    {activeTab === 'CATEGORIAS'
+        ? (categorias.find(c => c.firebaseId === selectedCategory)?.label || "Archivo del Reino")
+        : selectedCategory
+    }
+</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-    {(perfiles || []).filter(p => p && String(p.profesion || '').trim().toLowerCase() === String(selectedCategory).trim().toLowerCase()).map(p => {
+    {(perfiles || []).filter(p => {
+        if (!p) return false;
+        // Si estamos en la pestaña de Categorías Inteligentes:
+        if (activeTab === 'CATEGORIAS') {
+            const misCategorias = obtenerCategoriasDePerfil(p);
+            return misCategorias.includes(selectedCategory);
+        }
+        // Si estamos en Explorar (por profesión):
+        return String(p.profesion || '').trim().toLowerCase() === String(selectedCategory).trim().toLowerCase();
+    }).map(p => {
+                    const scoreValue = Number(typeof calcularPromedio === 'function' ? calcularPromedio(p) : 0) || 0;
+                    const scoreTierClass = scoreValue >= 95
+                        ? 'card-score-badge--gold'
+                        : scoreValue >= 86
+                            ? 'card-score-badge--diamond'
+                            : scoreValue >= 75
+                                ? 'card-score-badge--fire'
+                                : '';
                     const profKey = p.profesion?.toUpperCase() || 'DEFAULT';
                     const neonClass = (typeof neonColors !== 'undefined' && neonColors[profKey]) ? neonColors[profKey] : { color: '#06b6d4', sombra: 'rgba(6,182,212,0.5)' };
                     return (
@@ -3518,12 +3901,23 @@ const saveProfile = (e) => {
                                     )}
                                 </div>
 
-                                <div className="card-score-badge absolute top-2 right-2 w-14 h-14 backdrop-blur-md rounded-full flex flex-col items-center justify-center border">
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        setScorePanelModal({ isOpen: true, profile: p });
+                                    }}
+                                    className={`card-score-badge ${scoreTierClass} absolute top-2 right-2 w-14 h-14 backdrop-blur-md rounded-full flex flex-col items-center justify-center border`}
+                                    title={`Puntaje de ${p.nombre}`}
+                                >
+                                    {scoreValue >= 75 && scoreValue <= 85 && (
+                                        <span className="card-score-badge__fire-emoji" aria-hidden="true">🔥</span>
+                                    )}
                                     <span className="text-[9px] font-black text-[var(--metal-gold)] leading-none">G2</span>
-                                    <span className="text-lg font-black text-white">
+                                    <span className="card-score-badge__value text-lg font-black">
                                         {typeof calcularPromedio === 'function' ? calcularPromedio(p) : '8.5'}
                                     </span>
-                                </div>
+                                </button>
 
                                 <div className="absolute bottom-4 left-4 right-4">
                                     <div className="text-bubble card-footer-profession w-full backdrop-blur-md p-4 rounded-2xl border">
@@ -3621,47 +4015,7 @@ const saveProfile = (e) => {
                     </div>
                     <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
                         <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Perfiles</p>
-                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId).filter(Boolean)).size}</p>
-                    </div>
-                </div>
-            </div>
-
-            <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] p-5">
-                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Escenas</p>
-                        <p className="text-xs text-slate-400">Cargá una URL de foto o video sin asignarla a ningún personaje.</p>
-                        <input
-                            type="text"
-                            value={urlInput}
-                            onChange={(e) => setUrlInput(e.target.value)}
-                            className="w-full filter-select"
-                            placeholder="https://..."
-                        />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <select
-                            value={galleryLabel}
-                            onChange={(e) => setGalleryLabel(e.target.value)}
-                            className="filter-select"
-                        >
-                            {GALLERY_LABELS.map(label => <option key={label} value={label}>{label}</option>)}
-                        </select>
-                        <select
-                            value={galleryMediaType}
-                            onChange={(e) => setGalleryMediaType(e.target.value)}
-                            className="filter-select"
-                        >
-                            <option value="image">Imagen</option>
-                            <option value="video">Video</option>
-                        </select>
-                        <button
-                            type="button"
-                            onClick={submitEscena}
-                            className="btn-metal btn-metal--gold col-span-2 px-4 py-2 rounded-full text-[10px] tracking-[0.08em]"
-                        >
-                            Guardar escena
-                        </button>
+                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId)).size}</p>
                     </div>
                 </div>
             </div>
@@ -4043,6 +4397,13 @@ const saveProfile = (e) => {
                             <div className="flex items-center justify-start sm:justify-end gap-2">
                                 {isEditingGalleryLabel ? (
                                     <>
+                                        <input
+                                            type="url"
+                                            value={galleryUrlDraft}
+                                            onChange={(event) => setGalleryUrlDraft(event.target.value)}
+                                            placeholder="https://..."
+                                            className="min-w-[260px] bg-slate-900 border theme-border-secondary rounded-lg px-2 py-1 text-[10px] font-bold tracking-[0.04em] text-white focus:outline-none focus:border-[var(--metal-gold)]"
+                                        />
                                         <select
                                             value={galleryLabelDraft}
                                             onChange={(event) => setGalleryLabelDraft(event.target.value)}
@@ -4056,14 +4417,17 @@ const saveProfile = (e) => {
                                         <button
                                             type="button"
                                             onClick={saveSelectedGalleryLabel}
+                                            disabled={isSavingGalleryEditor}
                                             className="px-2 py-1 rounded-lg border theme-border-secondary bg-slate-900 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
                                         >
-                                            Guardar
+                                            {isSavingGalleryEditor ? 'Guardando...' : 'Guardar'}
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => {
                                                 setGalleryLabelDraft(selectedGalleryPhoto?.label || '');
+                                                setGalleryUrlDraft(selectedGalleryPhoto?.url || '');
+                                                setGalleryEditorError('');
                                                 setIsEditingGalleryLabel(false);
                                             }}
                                             className="px-2 py-1 rounded-lg border theme-border-secondary bg-slate-900 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300 hover:text-white transition-all"
@@ -4081,6 +4445,9 @@ const saveProfile = (e) => {
                                         <span className="text-xs leading-none">✏️</span>
                                         <span>{selectedGalleryPhoto?.label || 'Sin etiqueta'}</span>
                                     </button>
+                                )}
+                                {isEditingGalleryLabel && galleryEditorError && (
+                                    <p className="text-[10px] font-bold tracking-[0.04em] text-rose-300">{galleryEditorError}</p>
                                 )}
                             </div>
                         </div>
@@ -4191,103 +4558,6 @@ const saveProfile = (e) => {
                             ))}
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
-    )}
-
-    {/* 4. VISTA ANÓNIMO */}
-    {activeTab === 'ANONIMO' && (
-        <div className="space-y-10 animate-in fade-in duration-500">
-            <div>
-                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Anónimo</h2>
-                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Multimedia sin personaje · también visible en Galería General</p>
-            </div>
-
-            <div className="theme-surface-soft border theme-border-secondary rounded-[2rem] p-6 space-y-4">
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(190px,0.8fr)]">
-                    <input
-                        placeholder={anonimoGalleryMediaType === 'video' ? "https://video.com/video.mp4 o https://youtube.com/..." : "https://imagen.com/anonimo.jpg"}
-                        className="min-w-0 theme-surface-soft border theme-border-secondary p-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold text-xs"
-                        value={anonimoUrlInput}
-                        onChange={(event) => setAnonimoUrlInput(event.target.value)}
-                    />
-                    <select
-                        value={anonimoGalleryMediaType}
-                        onChange={(event) => setAnonimoGalleryMediaType(event.target.value)}
-                        className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
-                    >
-                        <option value="image">Imagen</option>
-                        <option value="video">Video</option>
-                    </select>
-                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_minmax(210px,auto)]">
-                        <select
-                            value={anonimoGalleryLabel}
-                            onChange={(event) => setAnonimoGalleryLabel(event.target.value)}
-                            className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
-                        >
-                            {GALLERY_LABELS.map((label) => (
-                                <option key={label} value={label}>Etiqueta {label}</option>
-                            ))}
-                        </select>
-                        <button
-                            type="button"
-                            onClick={() => submitAnonimoGalleryImage()}
-                            className="btn-metal btn-metal--gold w-full sm:w-auto px-6 py-4 rounded-xl text-[10px] sm:min-w-[210px]"
-                        >
-                            Guardar archivo
-                        </button>
-                    </div>
-                </div>
-                <input
-                    type="file"
-                    accept="image/*,video/*,.gif"
-                    onChange={handleLocalAnonimoFileUpload}
-                    className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
-                />
-            </div>
-
-            {anonimoMediaItems.length === 0 ? (
-                <div className="py-24 border border-dashed theme-border-secondary rounded-2xl text-center bg-slate-950/30">
-                    <div className="w-20 h-20 rounded-full bg-slate-900 border theme-border-secondary flex items-center justify-center mx-auto mb-6">
-                        <LucideIcon name="image-off" size={28} className="text-slate-600" />
-                    </div>
-                    <h3 className="font-title text-xl font-black italic text-white tracking-[0.06em]">Sin archivos anónimos todavía</h3>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
-                    {anonimoMediaItems.map((item, index) => {
-                        const normalizedItem = normalizeGalleryItem(item);
-                        const labelStyle = getGalleryLabelStyle(normalizedItem.label);
-                        return (
-                            <article key={`anonimo-item-${index}`} className="theme-surface-card border theme-border-secondary rounded-[2.4rem] overflow-hidden">
-                                <div className="aspect-[4/5] relative overflow-hidden bg-slate-950">
-                                    {normalizedItem.type === 'video' ? (
-                                        <video src={normalizedItem.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
-                                    ) : (
-                                        <img src={getSafeImageSrc(normalizedItem.url, CRYING_EMOJI_FALLBACK)} className="w-full h-full object-cover" alt="Archivo anónimo" onError={applyCryingEmojiFallback} />
-                                    )}
-                                    <div className="absolute top-3 right-3 px-3 py-1 rounded-full border theme-border-secondary bg-slate-950/80 text-[10px] font-black uppercase tracking-[0.15em] text-slate-200">
-                                        {normalizedItem.type === 'video' ? 'Video' : 'Imagen'}
-                                    </div>
-                                    {normalizedItem.label && (
-                                        <div
-                                            className="absolute bottom-3 left-1/2 -translate-x-1/2 min-w-[3.25rem] rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.35em] backdrop-blur-md text-center"
-                                            style={{
-                                                background: labelStyle.bg,
-                                                borderColor: labelStyle.border,
-                                                color: labelStyle.text,
-                                                boxShadow: `0 0 14px ${labelStyle.glow}, 0 0 24px ${labelStyle.glow}`,
-                                                textShadow: `0 0 10px ${labelStyle.glow}`
-                                            }}
-                                        >
-                                            {normalizedItem.label}
-                                        </div>
-                                    )}
-                                </div>
-                            </article>
-                        );
-                    })}
                 </div>
             )}
         </div>
@@ -4409,22 +4679,26 @@ const saveProfile = (e) => {
                         <p className="text-xs text-slate-400">Seleccioná una opción para habilitar las batallas.</p>
                     )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {ARENAS.map((arenaName) => (
+                        {ARENAS.map((arenaName) => {
+                            const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope, selectedBattleGroupKey);
+                            const isArenaCompleted = Boolean(arenaBattleState?.[arenaKey]?.isFinished);
+
+                            return (
                     <button
                         key={arenaName}
                         disabled={requiresBattleGroupSelection && !selectedBattleGroupKey}
                         onClick={() => {
                             setSelectedArena(arenaName);
-                            const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope, selectedBattleGroupKey);
                             if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope, selectedBattleGroupKey);
                         }}
-                        className="solid-metal-ui battle-mode-card border rounded-2xl p-6 text-left transition-all disabled:opacity-45 disabled:cursor-not-allowed"
+                        className={`solid-metal-ui battle-mode-card border rounded-2xl p-6 text-left transition-all disabled:opacity-45 disabled:cursor-not-allowed ${isArenaCompleted ? 'battle-mode-card--completed' : ''}`}
                     >
-                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
+                        <p className={`text-[10px] font-black uppercase tracking-[0.28em] ${isArenaCompleted ? 'text-emerald-100/90' : 'text-slate-500'}`}>Item</p>
                         <h3 className="font-black italic text-white mt-2">{arenaName}</h3>
+                        {isArenaCompleted && <p className="battle-mode-card__status mt-4">Completada</p>}
                     </button>
-                        ))}
-                    </div>
+                            );
+                        })}                    </div>
                 </div>
             )}
         </div>
@@ -4759,7 +5033,7 @@ const saveProfile = (e) => {
     <td className="px-8 py-5 text-right">
         <div className={`inline-block bg-slate-900 border px-4 py-2 rounded-xl transition-all duration-300 ${idx === 0 ? 'border-[#ffd700]/50 shadow-[0_0_15px_rgba(255,215,0,0.3)]' : idx === 1 ? 'border-[#c0c0c0]/50 shadow-[0_0_15px_rgba(192,192,192,0.3)]' : idx === 2 ? 'border-[#cd7f32]/50 shadow-[0_0_15px_rgba(205,127,50,0.3)]' : 'theme-border-secondary group-hover:border-[color:color-mix(in_srgb,var(--metal-gold)_50%,transparent)]'}`}>
             <span className={`font-black leading-none ${idx === 0 ? 'text-gold' : idx === 1 ? 'text-silver' : idx === 2 ? 'text-bronze' : 'text-[var(--metal-gold)] text-lg'}`}>
-                {calcularPromedio(p)}
+                {getDisplayedRankingScore(p)}
             </span>
         </div>
     </td>
@@ -4770,10 +5044,14 @@ const saveProfile = (e) => {
 
             {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
                 const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+                const categoryItems = SCORE_GROUP_TO_ARENAS[scoreBreakdownModal.category] || [];
                 return (
                     <div
-                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                        className="fixed inset-0 z-[140] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => {
+                            setScoreBreakdownModal({ isOpen: false, profile: null, category: null });
+                            setScoreBreakdownItemDetail(null);
+                        }}
                     >
                         <div
                             className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
@@ -4790,11 +5068,33 @@ const saveProfile = (e) => {
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                                    onClick={() => {
+                                        setScoreBreakdownModal({ isOpen: false, profile: null, category: null });
+                                        setScoreBreakdownItemDetail(null);
+                                    }}
                                     className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
                                 >
                                     Cerrar
                                 </button>
+                            </div>
+
+                            <div className="mb-4">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400 font-black mb-2">Detalle por ítem</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {categoryItems.map((itemName) => (
+                                        <button
+                                            key={`breakdown-item-${itemName}`}
+                                            type="button"
+                                            onClick={() => {
+                                                const itemDetail = getItemBattleBreakdown(scoreBreakdownModal.profile.firebaseId, itemName);
+                                                setScoreBreakdownItemDetail(itemDetail);
+                                            }}
+                                            className="btn-metal btn-metal--bronze px-3 py-2 rounded-lg text-[10px] font-black"
+                                        >
+                                            {itemName}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4824,6 +5124,120 @@ const saveProfile = (e) => {
                                     )}
                                 </div>
                             </div>
+
+                            {scoreBreakdownItemDetail?.arenaName && (
+                                <div className="mt-5 rounded-2xl border border-cyan-500/40 bg-cyan-950/15 p-4">
+                                    <div className="flex items-center justify-between gap-3 mb-4">
+                                        <h4 className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">
+                                            Ítem: {scoreBreakdownItemDetail.arenaName}
+                                        </h4>
+                                        <button
+                                            type="button"
+                                            onClick={() => setScoreBreakdownItemDetail(null)}
+                                            className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                                        >
+                                            Cerrar detalle
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {['wins', 'losses'].map((resultType) => {
+                                            const isWinList = resultType === 'wins';
+                                            const battleList = scoreBreakdownItemDetail[resultType] || [];
+                                            return (
+                                                <div key={`item-detail-${resultType}`} className={`rounded-xl border p-3 min-h-36 ${isWinList ? 'border-emerald-500/40 bg-emerald-950/15' : 'border-rose-500/40 bg-rose-950/15'}`}>
+                                                    <h5 className={`text-[10px] font-black uppercase tracking-[0.15em] mb-2 ${isWinList ? 'text-emerald-300' : 'text-rose-300'}`}>
+                                                        {isWinList ? 'Ganadas' : 'Perdidas'}
+                                                    </h5>
+                                                    {battleList.length ? (
+                                                        <ul className="space-y-2">
+                                                            {battleList.map((battle, idx) => (
+                                                                <li key={`${resultType}-${battle.pairKey}-${idx}`} className="flex items-center justify-between gap-2">
+                                                                    <span className={`text-sm font-semibold ${isWinList ? 'text-emerald-100' : 'text-rose-100'}`}>{battle.opponentName}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn-metal btn-metal--red px-2 py-1 rounded text-[9px] font-black"
+                                                                        onClick={async () => {
+                                                                            const confirmed = window.confirm('¿Seguro que querés deshacer esta batalla?');
+                                                                            if (!confirmed) return;
+                                                                            try {
+                                                                                await resetSpecificBattle(battle.arenaName, battle.profileId, battle.opponentId);
+                                                                                const refreshedDetail = getItemBattleBreakdown(scoreBreakdownModal.profile.firebaseId, battle.arenaName);
+                                                                                setScoreBreakdownItemDetail(refreshedDetail);
+                                                                            } catch (error) {
+                                                                                console.error('No se pudo eliminar la batalla del desglose:', error);
+                                                                                alert('No se pudo eliminar la batalla. Verificá tu conexión con Firebase e intentá de nuevo.');
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        Eliminar
+                                                                    </button>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    ) : (
+                                                        <p className={`text-xs ${isWinList ? 'text-emerald-200/70' : 'text-rose-200/70'}`}>
+                                                            {isWinList ? 'No hay batallas ganadas registradas.' : 'No hay batallas perdidas registradas.'}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {scorePanelModal.isOpen && scorePanelModal.profile && (() => {
+                const selectedProfile = scorePanelModal.profile;
+                const profileScores = getProfileScores(selectedProfile);
+                const categoryEntries = Object.entries(SCORE_GROUP_TO_ARENAS);
+                return (
+                    <div
+                        className="fixed inset-0 z-[140] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setScorePanelModal({ isOpen: false, profile: null })}
+                    >
+                        <div className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6 space-y-6" onClick={(event) => event.stopPropagation()}>
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 className="font-title text-xl font-black text-white tracking-wide">{selectedProfile.nombre} · Puntaje</h3>
+                                    <p className="text-xs text-slate-300 mt-1">Panel de detalle por ítems, características y G2 Score.</p>
+                                </div>
+                                <button type="button" onClick={(event) => { event.stopPropagation(); setScorePanelModal({ isOpen: false, profile: null }); }} className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black">
+                                    Cerrar
+                                </button>
+                            </div>
+
+                            <section className="space-y-3">
+                                <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Ítems</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {CARACTERISTICAS.map((itemKey) => (
+                                        <button key={itemKey} type="button" onClick={(event) => event.stopPropagation()} className="px-3 py-2 rounded-lg text-xs font-bold border border-slate-600/80 bg-slate-900/80 text-slate-100">
+                                            {itemKey}: {Number(profileScores[itemKey] || 0).toFixed(0)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="space-y-3">
+                                <h4 className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">Características</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {categoryEntries.map(([categoryKey, arenaKeys]) => (
+                                        <button key={categoryKey} type="button" onClick={(event) => event.stopPropagation()} className="px-3 py-2 rounded-lg text-xs font-bold border border-cyan-500/50 bg-cyan-950/25 text-cyan-100">
+                                            {categoryKey}: {getCategoryScore(selectedProfile, categoryKey).toFixed(0)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="space-y-3">
+                                <h4 className="text-xs font-black uppercase tracking-[0.16em] text-[var(--metal-gold)]">G2 Score</h4>
+                                <button type="button" onClick={(event) => event.stopPropagation()} className="w-full px-4 py-3 rounded-xl text-sm font-black border border-[var(--metal-gold)]/50 bg-[color:color-mix(in_srgb,var(--metal-gold)_18%,rgba(15,23,42,0.82))] text-[var(--metal-gold)]">
+                                    G2 SCORE TOTAL: {calcularPromedio(selectedProfile)}
+                                </button>
+                            </section>
                         </div>
                     </div>
                 );
@@ -4831,8 +5245,90 @@ const saveProfile = (e) => {
         </div>
     )}
 
-                {isModalOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
+    {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
+    {activeTab === 'CATEGORIAS' && !selectedCategory && (
+        <div className="space-y-10 animate-in fade-in duration-500">
+            <div className="flex justify-between items-end">
+                <div>
+                    <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Carpetas</h2>
+                </div>
+                <button onClick={() => { resetCatForm(); setIsCatModalOpen(true); }} className="btn-metal btn-metal--gold px-8 py-3 rounded-xl text-xs">
+                    NUEVA CATEGORÍA
+                </button>
+            </div>
+            {categorias.length === 0 ? (
+                <div className="py-20 border-2 border-dashed theme-border-secondary rounded-2xl text-center">
+                    <p className="text-slate-600 font-black italic uppercase">No hay categorías personalizadas</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+{categorias.map(cat => (
+<div key={cat.firebaseId} onClick={() => setSelectedCategory(cat.firebaseId)} className="group relative bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] rounded-xl overflow-hidden border theme-border-secondary cursor-pointer hover:border-[var(--metal-gold)]/70 transition-all duration-500 shadow-[inset_0_1px_0_rgba(148,163,184,0.2),0_18px_30px_rgba(2,6,23,0.55)] aspect-[3/4]">
+        {/* BOTONES DE ACCIÓN: EDITAR Y ELIMINAR */}
+        <div className="absolute top-5 right-5 z-50 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+            <button
+    onClick={(e) => {
+        e.stopPropagation();
+        // Preparamos los datos asegurándonos de que las listas existan (si no, ponemos [])
+        setCatFormData({
+            ...cat,
+            reglas: {
+                ...cat.reglas,
+                nacionalidades: cat.reglas?.nacionalidades || [],
+                profesiones: cat.reglas?.profesiones || [],
+                ciudades: cat.reglas?.ciudades || []
+            }
+        });
+        setIsCatModalOpen(true); // Abrimos el modal
+    }}
+    className="w-8 h-8 flex items-center justify-center bg-slate-900/95 hover:bg-[var(--metal-bronze)] text-white rounded-lg border theme-border-secondary transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_rgba(2,6,23,0.45)]"
+>
+    <LucideIcon name="pencil" size={14} />
+</button>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if(window.confirm('¿Seguro que querés borrar esta carpeta?')) {
+                        deleteCategory(cat.firebaseId);
+                    }
+                }}
+                className="w-8 h-8 flex items-center justify-center bg-slate-900/95 hover:bg-red-600 text-white rounded-lg border theme-border-secondary transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_rgba(2,6,23,0.45)]"
+            >
+                <LucideIcon name="x" size={14} />
+            </button>
+        </div>
+
+        {/* Imagen de Portada */}
+        <div className="absolute inset-0">
+            <img
+                src={getSafeImageSrc(cat.coverImg, 'https://via.placeholder.com/400x600?text=Sin+Portada')}
+                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity duration-500"
+                onError={applyCryingEmojiFallback}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
+        </div>
+
+        {/* Contenido (Nombre y Contador) */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 text-center">
+            <h3 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2 drop-shadow-lg">
+                {cat.label}
+            </h3>
+            <div className="inline-flex items-center gap-2 bg-[var(--metal-bronze)]/20 backdrop-blur-md px-4 py-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)]">
+                <span className="text-[10px] font-black uppercase text-[var(--metal-gold)] tracking-widest">
+                    {perfiles.filter(p => obtenerCategoriasDePerfil(p).includes(cat.firebaseId)).length} Perfiles
+                </span>
+            </div>
+        </div>
+    </div>
+))}
+                </div>
+            )}
+        </div>
+    )}
+</div>
+                    </main>
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[140] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
                             <div className="bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] w-full max-w-2xl rounded-3xl overflow-hidden shadow-[inset_0_1px_0_rgba(148,163,184,0.22),0_24px_60px_rgba(2,6,23,0.65)] border theme-border-secondary max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
                                <button
     onClick={() => setIsModalOpen(false)}
@@ -4893,42 +5389,6 @@ const saveProfile = (e) => {
                     </div>
                 )}
             </div>
-            {editingId && urlInput.trim() && (
-                <div className="w-48">
-                    <p className="mb-2 text-[9px] font-black uppercase tracking-[0.3em] text-[var(--metal-gold)]/80">Preview galería</p>
-                    <div className="relative h-32 overflow-hidden rounded-[1.5rem] border border-[color:color-mix(in_srgb,var(--metal-gold)_40%,transparent)] bg-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.15)]">
-                        {galleryMediaType === 'video' ? (() => {
-                            const embedInfo = getVideoEmbedInfo(urlInput);
-                            if (embedInfo) {
-                                return (
-                                    <div className="w-full h-full bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.28),_rgba(15,23,42,0.96))] flex flex-col items-center justify-center gap-2 text-center px-4">
-                                        <div className="w-10 h-10 rounded-full border border-[var(--metal-gold)]/40 bg-slate-950/70 flex items-center justify-center text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] text-lg">▶</div>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white">{embedInfo.provider}</p>
-                                    </div>
-                                );
-                            }
-                            return <video src={urlInput} className="w-full h-full object-cover" muted playsInline preload="metadata" />;
-                        })() : <img src={getSafeImageSrc(urlInput, CRYING_EMOJI_FALLBACK)} className="w-full h-full object-cover" alt="Preview galería" onError={applyCryingEmojiFallback} />}
-                        {(() => {
-                            const labelStyle = getGalleryLabelStyle(galleryLabel);
-                            return (
-                                <div
-                                    className="absolute bottom-3 left-1/2 flex min-w-[3.25rem] -translate-x-1/2 items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.35em] backdrop-blur-md"
-                                    style={{
-                                        background: labelStyle.bg,
-                                        borderColor: labelStyle.border,
-                                        color: labelStyle.text,
-                                        boxShadow: `0 0 14px ${labelStyle.glow}, 0 0 24px ${labelStyle.glow}`,
-                                        textShadow: `0 0 10px ${labelStyle.glow}`
-                                    }}
-                                >
-                                    {galleryLabel}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </div>
-            )}
         </div>
 
         {/* CAMPOS DE TEXTO */}
@@ -4982,52 +5442,6 @@ const saveProfile = (e) => {
                     />
                 </div>
 
-                {editingId && (
-                    <div className="col-span-2 space-y-2">
-                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">URL para sumar a la galería</label>
-                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(190px,0.8fr)]">
-                            <input
-                                placeholder={galleryMediaType === 'video' ? "https://video.com/video.mp4 o https://youtube.com/..." : "https://imagen.com/galeria.jpg"}
-                                className="min-w-0 theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold text-xs"
-                                value={urlInput}
-                                onChange={e => setUrlInput(e.target.value)}
-                            />
-                            <select
-                                value={galleryMediaType}
-                                onChange={e => setGalleryMediaType(e.target.value)}
-                                className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
-                            >
-                                <option value="image">Imagen</option>
-                                <option value="video">Video</option>
-                            </select>
-                            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_minmax(210px,auto)]">
-                                <select
-                                    value={galleryLabel}
-                                    onChange={e => setGalleryLabel(e.target.value)}
-                                    className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
-                                >
-                                    {GALLERY_LABELS.map(label => (
-                                        <option key={label} value={label}>Etiqueta {label}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={() => submitGalleryImage({ successMessage: '¡Foto guardada! Sos un genio.' })}
-                                    className="btn-metal btn-metal--gold w-full sm:w-auto px-6 py-4 rounded-xl text-[10px] sm:min-w-[210px]"
-                                >
-                                    Guardar en galería
-                                </button>
-                            </div>
-                        </div>
-                        <input
-                            type="file"
-                            accept="image/*,video/*,.gif"
-                            onChange={handleLocalGalleryFileUpload}
-                            className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
-                        />
-                    </div>
-                )}
-
                 <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">Nacimiento</label>
                     <input type="date" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold" value={formData.fechaNacimiento} onChange={e => setFormData({...formData, fechaNacimiento: e.target.value})} />
@@ -5067,8 +5481,8 @@ const saveProfile = (e) => {
             </div>
         </div>
     </div>
-                                    </div>
 
+</div>
                                     <div className="flex gap-4">
                                         {editingId && (
                                             <button type="button" onClick={deleteProfile} className="btn-metal btn-metal--danger px-10 py-8 rounded-xl text-xs">
@@ -5112,18 +5526,152 @@ const saveProfile = (e) => {
                                         onClick={confirmDeleteFromContext}
                                         className="btn-metal btn-metal--danger px-6 py-3 rounded-xl text-[10px]"
                                     >
-                                         Eliminar
+                                        Eliminar
                                     </button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                </div>
-                </main>
-            </div>
-        );
-    ;
+                    {isCatModalOpen && (
+                        <div className="fixed inset-0 z-[140] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
+                            <div className="bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] w-full max-w-5xl rounded-3xl overflow-hidden shadow-[inset_0_1px_0_rgba(148,163,184,0.22),0_24px_60px_rgba(2,6,23,0.65)] border theme-border-secondary max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
+                                <button
+    type="button"
+    onClick={() => { resetCatForm(); setIsCatModalOpen(false); }}
+    className="p-4 hover:bg-slate-800 rounded-full transition-all"
+>
+    <LucideIcon name="x" size={24} className="text-slate-400" />
+</button>
+                                <form onSubmit={saveCategory} className="flex-1 overflow-y-auto p-12 space-y-12">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                                        <div className="space-y-8">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-[var(--metal-bronze)] rounded-2xl flex items-center justify-center text-white">
+                                                    <LucideIcon name="scroll" />
+                                                </div>
+                                                <h3 className="text-xl font-black italic text-white">Nuevo Archivo del Reino</h3>
+                                            </div>
+                                            <div className="space-y-4">
+                                                <input required placeholder="Nombre de la Carpeta" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none font-bold text-lg text-white" value={catFormData.label} onChange={e => setCatFormData({...catFormData, label: e.target.value})} />
+                                                <div className="w-full">
+                                                    <div className="space-y-1 w-full">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">URL de Portada</label>
+                                                        <input
+                                                            placeholder="https://..."
+                                                            className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold text-xs"
+                                                            value={catFormData.coverImg}
+                                                            onChange={e => setCatFormData({...catFormData, coverImg: e.target.value})}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+                                        <div className="space-y-6">
+                                            <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                                                <LucideIcon name="shield" size={12} /> Mandatos de Clasificación del Consejo
+                                            </h4>
+
+                                            <div className="p-8 bg-slate-950/50 border theme-border-secondary rounded-2xl space-y-6">
+                                                <div className="grid grid-cols-2 gap-4">
+{/* Filtro Nacionalidades Acumulable */}
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">NACIONALIDADES</label>
+                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
+                                                            {catFormData.reglas.nacionalidades.map(n => (
+                                                                <span key={n} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
+                                                                    {n} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, nacionalidades: catFormData.reglas.nacionalidades.filter(x => x !== n)}})}>×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
+                                                            onChange={e => {
+                                                                if(e.target.value && !catFormData.reglas.nacionalidades.includes(e.target.value))
+                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, nacionalidades: [...catFormData.reglas.nacionalidades, e.target.value]}})
+                                                            }}>
+                                                            <option value="">Añadir país...</option>
+                                                            {uniqueNacionalidades.filter(n => n !== 'Todas').map(n => <option key={n} value={n}>{n}</option>)}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Filtro Ciudades Acumulable */}
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">CIUDADES</label>
+                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
+                                                            {catFormData.reglas.ciudades.map(c => (
+                                                                <span key={c} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
+                                                                    {c} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, ciudades: catFormData.reglas.ciudades.filter(x => x !== c)}})}>×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
+                                                            onChange={e => {
+                                                                if(e.target.value && !catFormData.reglas.ciudades.includes(e.target.value))
+                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, ciudades: [...catFormData.reglas.ciudades, e.target.value]}})
+                                                            }}>
+                                                            <option value="">Añadir ciudad...</option>
+                                                            {uniqueCiudades.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Filtro Profesiones Acumulable */}
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">PROFESIONES</label>
+                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
+                                                            {catFormData.reglas.profesiones.map(p => (
+                                                                <span key={p} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
+                                                                    {p} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, profesiones: catFormData.reglas.profesiones.filter(x => x !== p)}})}>×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
+                                                            onChange={e => {
+                                                                if(e.target.value && !catFormData.reglas.profesiones.includes(e.target.value))
+                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, profesiones: [...catFormData.reglas.profesiones, e.target.value]}})
+                                                            }}>
+                                                            <option value="">Añadir profesión...</option>
+                                                            {Object.keys(PROFESIONES_CONFIG).map(p => <option key={p} value={p}>{p}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">EDAD MIN</label>
+                                                            <input type="number" placeholder="18" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-white" value={catFormData.reglas.edadMin} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, edadMin: e.target.value}})} />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">EDAD MAX</label>
+                                                            <input type="number" placeholder="30" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-white" value={catFormData.reglas.edadMax} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, edadMax: e.target.value}})} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-1 pt-4 border-t theme-border-secondary">
+                                                    <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">Condición de Score</label>
+                                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                                        <select className="theme-surface-card p-3 rounded-xl text-[10px] font-bold outline-none border theme-border-secondary text-white" value={catFormData.reglas.caracteristica} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, caracteristica: e.target.value}})}>
+                                                            {CARACTERISTICAS.map(c => <option key={c}>{c}</option>)}
+                                                        </select>
+                                                        <select className="theme-surface-card p-3 rounded-xl text-[10px] font-bold outline-none border theme-border-secondary text-white" value={catFormData.reglas.operador} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, operador: e.target.value}})}>
+                                                            <option>Superior a</option>
+                                                            <option>Inferior a</option>
+                                                        </select>
+                                                    </div>
+                                                    <input type="number" placeholder="Umbral (0-10)" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-[var(--metal-gold)]" value={catFormData.reglas.umbral} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, umbral: e.target.value}})} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="btn-metal btn-metal--gold w-full py-8 rounded-xl text-xs">
+                                        CREAR CARPETA INTELIGENTE
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
