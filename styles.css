@@ -176,6 +176,7 @@ body {
   padding: 14px;
   background: #fbfbfb;
   box-shadow: 5px 5px 10px #e0e0e0;
+  cursor: pointer;
 }
 
 .song-card h4 {
@@ -185,6 +186,61 @@ body {
 .song-card p {
   margin: 0;
   color: #555;
+}
+
+.song-detail {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  background: #fefefe;
+}
+
+.song-detail h4,
+.song-detail-artist {
+  margin: 0 0 10px;
+}
+
+.lyrics-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lyric-line {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 2px;
+  min-height: 52px;
+  line-height: 1.4;
+  padding: 4px 0;
+}
+
+.chord-row,
+.word-row {
+  display: grid;
+  grid-template-columns: repeat(var(--line-columns, 1), minmax(0, 1fr));
+  column-gap: 12px;
+  align-items: end;
+}
+
+.chord-token,
+.word-token {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.chord-token {
+  font-weight: 700;
+  color: #1c3d6b;
+  line-height: 1.35;
+}
+
+.word-token {
+  color: #222;
+  line-height: 1.45;
 }
 
 .hidden {

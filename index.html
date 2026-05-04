@@ -25,6 +25,7 @@
         <section id="screen-cancionero" class="screen-panel hidden">
           <h3>Cancionero</h3>
           <div id="songbook-cards" class="songbook-cards"></div>
+          <article id="song-detail" class="song-detail hidden" aria-live="polite"></article>
         </section>
 
         <section id="screen-remix" class="screen-panel hidden">
@@ -69,6 +70,7 @@
       const songFormWrapper = document.getElementById("song-form-wrapper");
       const songForm = document.getElementById("song-form");
       const songbookCards = document.getElementById("songbook-cards");
+      const songDetail = document.getElementById("song-detail");
       const navButtons = document.querySelectorAll(".piano-key");
       const screenPanels = document.querySelectorAll(".screen-panel");
 
@@ -89,6 +91,51 @@
         songFormWrapper.classList.toggle("hidden");
       });
 
+      const parseLyricLine = (line) => {
+        const tokenRegex = /(\[[^\]]+\]\S+)|\S+/g;
+        return (line.match(tokenRegex) || []).map((token) => {
+          const chordMatch = token.match(/^\[([^\]]+)\](.+)$/);
+          if (chordMatch) {
+            return { chord: chordMatch[1], word: chordMatch[2] };
+          }
+
+          return { chord: "", word: token };
+        });
+      };
+
+      const renderSongDetail = (title, artist, lyrics) => {
+        const linesMarkup = lyrics
+          .split(/\r?\n/)
+          .filter((line) => line.trim().length > 0)
+          .map((line) => {
+            const tokens = parseLyricLine(line);
+            const columns = Math.max(tokens.length, 1);
+
+            const chordRow = tokens
+              .map(({ chord }) => `<span class="chord-token">${chord || "\u00A0"}</span>`)
+              .join("");
+
+            const wordRow = tokens
+              .map(({ word }) => `<span class="word-token">${word}</span>`)
+              .join("");
+
+            return `
+              <div class="lyric-line" style="--line-columns:${columns}">
+                <div class="chord-row">${chordRow}</div>
+                <div class="word-row">${wordRow}</div>
+              </div>
+            `;
+          })
+          .join("");
+
+        songDetail.innerHTML = `
+          <h4>${title}</h4>
+          <p class="song-detail-artist">${artist}</p>
+          <section class="lyrics-detail">${linesMarkup}</section>
+        `;
+        songDetail.classList.remove("hidden");
+      };
+
       songForm.addEventListener("submit", (event) => {
         event.preventDefault();
 
@@ -107,10 +154,16 @@
           <p>${artist}</p>
         `;
 
+        card.addEventListener("click", () => {
+          renderSongDetail(title, artist, lyrics);
+        });
+
         songbookCards.prepend(card);
 
         songForm.reset();
         songFormWrapper.classList.add("hidden");
+
+        renderSongDetail(title, artist, lyrics);
       });
     </script>
   </body>
