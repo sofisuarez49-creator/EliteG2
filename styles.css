@@ -176,6 +176,7 @@ body {
   padding: 14px;
   background: #fbfbfb;
   box-shadow: 5px 5px 10px #e0e0e0;
+  cursor: pointer;
 }
 
 .song-card h4 {
@@ -185,6 +186,48 @@ body {
 .song-card p {
   margin: 0;
   color: #555;
+}
+
+.song-detail-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.song-detail-panel {
+  width: min(760px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 14px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+}
+
+.close-song-detail {
+  border: 1px solid #222;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.song-detail-artist {
+  color: #666;
+  margin-top: 4px;
+}
+
+.song-detail-lyrics {
+  margin: 16px 0 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  line-height: 1.45;
 }
 
 .hidden {
@@ -202,31 +245,88 @@ body {
   }
 }
 
-.song-card-toggle {
+.song-detail {
+  margin-top: 20px;
+  border-top: 1px solid #ececec;
+  padding-top: 16px;
+}
+
+.detail-artist {
+  margin-top: -8px;
+  color: #666;
+}
+
+.chord-picker {
+  margin: 12px 0;
+}
+
+.chord-picker input {
+  width: 100%;
+  border: 1px solid #d7d7d7;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 6px;
+}
+
+.chord-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 10px;
-  border: 1px solid #c8c8c8;
-  border-radius: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.chord-chip {
+  border: 1px solid #cacaca;
   background: #fff;
-  color: #222;
-  padding: 8px 10px;
-  font-size: 0.9rem;
+  border-radius: 999px;
+  padding: 6px 11px;
   cursor: pointer;
 }
 
-.song-card-details {
-  margin-top: 10px;
+.chord-chip:hover {
+  background: #111;
+  color: #fff;
+}
+
+.lyrics-editor {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.song-lyrics {
-  margin: 0;
-  padding: 10px;
-  border-radius: 8px;
-  background: #f3f3f3;
-  border: 1px solid #e2e2e2;
-  color: #333;
-  white-space: pre-wrap;
-  font-family: inherit;
+.lyrics-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lyric-token {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+  min-width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.lyric-token.active {
+  border-color: #111;
+  box-shadow: inset 0 0 0 1px #111;
+}
+
+.token-chord {
+  min-height: 16px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #173cad;
+}
+
+.detail-help {
+  color: #666;
+  font-size: 0.95rem;
 }
