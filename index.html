@@ -96,7 +96,32 @@
       </article>
     </section>
 
-    <script>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+      import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-analytics.js";
+      import {
+        getFirestore,
+        collection,
+        addDoc,
+        getDocs,
+        serverTimestamp
+      } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyC7dBfwy_UMucyMvom3tib8R4W09i6prf8",
+        authDomain: "sibemol-3e2ae.firebaseapp.com",
+        projectId: "sibemol-3e2ae",
+        storageBucket: "sibemol-3e2ae.firebasestorage.app",
+        messagingSenderId: "951976321027",
+        appId: "1:951976321027:web:f21ecef157a98da287ee36",
+        measurementId: "G-1X8EC7VYNL"
+      };
+
+      const firebaseApp = initializeApp(firebaseConfig);
+      getAnalytics(firebaseApp);
+      const db = getFirestore(firebaseApp);
+      const songsCollection = collection(db, "songs");
+
       const openSongFormButton = document.getElementById("open-song-form");
       const songFormWrapper = document.getElementById("song-form-wrapper");
       const songForm = document.getElementById("song-form");
@@ -118,7 +143,6 @@
       const saveTokenChordButton = document.getElementById("save-token-chord");
 
       const appState = { activeScreen: "nueva-cancion", songs: [] };
-      let nextSongId = 1;
       const songsById = new Map();
       let selectedTokenKey = null;
 
@@ -209,9 +233,11 @@
       const closeSongDetail = () => songDetailModal.classList.add("hidden");
 
       const renderSongs = () => {
+        songsById.clear();
         songbookCards.innerHTML = "";
         chordsCards.innerHTML = "";
         appState.songs.forEach((song) => {
+          songsById.set(song.id, song);
           const songCard = document.createElement("article");
           songCard.className = "song-card";
           songCard.innerHTML = `<h4>${song.title}</h4><p>${song.artist}</p>`;
@@ -237,13 +263,40 @@
         const artist = songForm.songArtist.value.trim();
         const lyrics = songForm.songLyrics.value.trim();
         if (!title || !artist || !lyrics) return;
-        const song = { id: nextSongId++, title, artist, lyrics, wordChords: {} };
-        appState.songs.push(song);
-        songsById.set(song.id, song);
+        saveSong({ title, artist, lyrics }).catch((error) => {
+          console.error("Error guardando canción:", error);
+          alert("No se pudo guardar la canción. Revisa la consola para más detalle.");
+        });
+      });
+
+      const loadSongs = async () => {
+        const snapshot = await getDocs(songsCollection);
+        appState.songs = snapshot.docs
+          .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+          .sort((a, b) => {
+            const aTime = a.createdAt?.seconds ?? 0;
+            const bTime = b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
         renderSongs();
+      };
+
+      const saveSong = async ({ title, artist, lyrics }) => {
+        await addDoc(songsCollection, {
+          title,
+          artist,
+          lyrics,
+          wordChords: {},
+          performers: {
+            band: artist,
+            singer: artist
+          },
+          createdAt: serverTimestamp()
+        });
+        await loadSongs();
         songForm.reset();
         songFormWrapper.classList.add("hidden");
-      });
+      };
 
       saveTokenChordButton.addEventListener("click", () => {
         const song = songsById.get(appState.activeSongId);
@@ -253,7 +306,9 @@
       });
 
       setActiveScreen(appState.activeScreen);
-      renderSongs();
+      loadSongs().catch((error) => {
+        console.error("Error cargando canciones:", error);
+      });
     </script>
   </body>
 </html>
