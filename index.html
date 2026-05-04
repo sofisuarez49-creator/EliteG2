@@ -197,11 +197,13 @@
             const wordWrapper = document.createElement("button");
             wordWrapper.type = "button";
             wordWrapper.className = "lyrics-token";
+            if (tokenKey === selectedTokenKey) wordWrapper.classList.add("active");
             const assignedChord = song.wordChords?.[tokenKey] || "";
             wordWrapper.innerHTML = `<span class="token-chord">${assignedChord}</span><span>${token}</span>`;
             wordWrapper.addEventListener("click", () => {
               selectedTokenKey = tokenKey;
               chordEditorPanel.classList.remove("hidden");
+              renderSongLyricsEditor(song);
             });
             line.appendChild(wordWrapper);
           });
