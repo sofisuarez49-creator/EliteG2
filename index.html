@@ -26,7 +26,70 @@
           <h2>Bienvenido a Sib</h2>
           <p>Un espacio musical con estilo de piano.</p>
         </section>
+
+        <section class="new-song-section">
+          <h3>Nueva canción</h3>
+          <button id="open-song-form" class="emoji-song-button" aria-label="Agregar nueva canción">
+            🎵
+          </button>
+        </section>
+
+        <section id="song-form-wrapper" class="song-form-wrapper hidden">
+          <form id="song-form" class="song-form">
+            <h3>Agregar canción</h3>
+            <label for="song-title">Título de la canción</label>
+            <input id="song-title" name="songTitle" type="text" required />
+
+            <label for="song-artist">Cantante o banda</label>
+            <input id="song-artist" name="songArtist" type="text" required />
+
+            <label for="song-lyrics">Letra completa</label>
+            <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
+
+            <button type="submit" class="submit-song">Guardar canción</button>
+          </form>
+        </section>
+
+        <section class="songbook-section">
+          <h3>Cancionero</h3>
+          <div id="songbook-cards" class="songbook-cards"></div>
+        </section>
       </main>
     </div>
+
+    <script>
+      const openSongFormButton = document.getElementById("open-song-form");
+      const songFormWrapper = document.getElementById("song-form-wrapper");
+      const songForm = document.getElementById("song-form");
+      const songbookCards = document.getElementById("songbook-cards");
+
+      openSongFormButton.addEventListener("click", () => {
+        songFormWrapper.classList.toggle("hidden");
+      });
+
+      songForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        const title = songForm.songTitle.value.trim();
+        const artist = songForm.songArtist.value.trim();
+        const lyrics = songForm.songLyrics.value.trim();
+
+        if (!title || !artist || !lyrics) {
+          return;
+        }
+
+        const card = document.createElement("article");
+        card.className = "song-card";
+        card.innerHTML = `
+          <h4>${title}</h4>
+          <p>${artist}</p>
+        `;
+
+        songbookCards.prepend(card);
+
+        songForm.reset();
+        songFormWrapper.classList.add("hidden");
+      });
+    </script>
   </body>
 </html>
