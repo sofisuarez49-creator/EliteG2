@@ -69,6 +69,15 @@
       </main>
     </div>
 
+    <section id="song-detail-modal" class="song-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="song-detail-title">
+      <article class="song-detail-panel">
+        <button id="close-song-detail" class="close-song-detail" type="button" aria-label="Cerrar detalle">Volver</button>
+        <h3 id="song-detail-title"></h3>
+        <p id="song-detail-artist" class="song-detail-artist"></p>
+        <pre id="song-detail-lyrics" class="song-detail-lyrics"></pre>
+      </article>
+    </section>
+
     <script>
       const openSongFormButton = document.getElementById("open-song-form");
       const songFormWrapper = document.getElementById("song-form-wrapper");
@@ -77,6 +86,30 @@
       const chordsCards = document.getElementById("chords-cards");
       const navButtons = document.querySelectorAll(".piano-key");
       const screenPanels = document.querySelectorAll(".screen-panel");
+      const songDetailModal = document.getElementById("song-detail-modal");
+      const closeSongDetailButton = document.getElementById("close-song-detail");
+      const songDetailTitle = document.getElementById("song-detail-title");
+      const songDetailArtist = document.getElementById("song-detail-artist");
+      const songDetailLyrics = document.getElementById("song-detail-lyrics");
+
+      let nextSongId = 1;
+      const songsById = new Map();
+
+      const openSongDetail = (songId) => {
+        const song = songsById.get(songId);
+        if (!song) {
+          return;
+        }
+
+        songDetailTitle.textContent = song.title;
+        songDetailArtist.textContent = song.artist;
+        songDetailLyrics.textContent = song.lyrics;
+        songDetailModal.classList.remove("hidden");
+      };
+
+      const closeSongDetail = () => {
+        songDetailModal.classList.add("hidden");
+      };
 
       const appState = {
         activeScreen: "nueva-cancion",
