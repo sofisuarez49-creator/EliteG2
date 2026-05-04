@@ -332,39 +332,23 @@ body {
 }
 
 
-.song-title {
-  font-size: 1.15rem;
-  font-weight: 700;
+.song-detail-chord-workspace {
+  margin-top: 12px;
 }
 
-.song-artist {
-  color: #7a7a7a;
-}
-
-.song-detail-lyrics {
-  margin: 16px 0 0;
-  line-height: 1.5;
+.lyrics-editor {
+  gap: 16px;
 }
 
 .lyrics-line {
+  align-items: flex-start;
   margin-bottom: 8px;
 }
 
-.word-with-chord {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  margin-right: 2px;
-  vertical-align: bottom;
+.lyric-token {
+  gap: 4px;
 }
 
-.chord {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #1f1f1f;
-  line-height: 1;
-}
-
-.word {
-  line-height: 1.2;
+.token-chord {
+  min-height: 18px;
 }
