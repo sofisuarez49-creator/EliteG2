@@ -71,6 +71,145 @@
       const songbookCards = document.getElementById("songbook-cards");
       const navButtons = document.querySelectorAll(".piano-key");
       const screenPanels = document.querySelectorAll(".screen-panel");
+      const chordOptions = ["", "C", "Cm", "D", "Dm", "E", "Em", "F", "Fm", "G", "Gm", "A", "Am", "B", "Bm"];
+      const songs = [];
+
+      const tokenizeLyrics = (lyrics) =>
+        lyrics.split("\n").map((line, lineIndex) => ({
+          lineIndex,
+          words: line
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((word, wordIndex) => ({
+              wordIndex,
+              text: word,
+            })),
+        }));
+
+      const updateChordAssignment = (song, lineIndex, wordIndex, chord) => {
+        const assignmentIndex = song.chordAssignments.findIndex(
+          (assignment) => assignment.lineIndex === lineIndex && assignment.wordIndex === wordIndex,
+        );
+
+        if (!chord) {
+          if (assignmentIndex >= 0) {
+            song.chordAssignments.splice(assignmentIndex, 1);
+          }
+          return;
+        }
+
+        if (assignmentIndex >= 0) {
+          song.chordAssignments[assignmentIndex].chord = chord;
+          return;
+        }
+
+        song.chordAssignments.push({ lineIndex, wordIndex, chord });
+      };
+
+      const getChordForWord = (song, lineIndex, wordIndex) =>
+        song.chordAssignments.find((assignment) => assignment.lineIndex === lineIndex && assignment.wordIndex === wordIndex)?.chord ||
+        "";
+
+      const createChordPicker = (song, wordButton) => {
+        const picker = document.createElement("div");
+        picker.className = "chord-picker";
+
+        const select = document.createElement("select");
+        chordOptions.forEach((chordValue) => {
+          const option = document.createElement("option");
+          option.value = chordValue;
+          option.textContent = chordValue || "Sin acorde";
+          select.append(option);
+        });
+
+        const { lineIndex, wordIndex } = wordButton.dataset;
+        select.value = getChordForWord(song, Number(lineIndex), Number(wordIndex));
+
+        const saveButton = document.createElement("button");
+        saveButton.type = "button";
+        saveButton.textContent = "Guardar";
+
+        const closeButton = document.createElement("button");
+        closeButton.type = "button";
+        closeButton.textContent = "Cerrar";
+
+        picker.append(select, saveButton, closeButton);
+        wordButton.append(picker);
+
+        saveButton.addEventListener("click", () => {
+          updateChordAssignment(song, Number(lineIndex), Number(wordIndex), select.value);
+          renderSongs();
+        });
+
+        closeButton.addEventListener("click", () => {
+          picker.remove();
+        });
+      };
+
+      const createWordElement = (song, lineIndex, word) => {
+        const wrapper = document.createElement("span");
+        wrapper.className = "word-wrapper";
+
+        const chord = getChordForWord(song, lineIndex, word.wordIndex);
+        const chordLabel = document.createElement("span");
+        chordLabel.className = "word-chord";
+        chordLabel.textContent = chord || "\u00A0";
+
+        const wordButton = document.createElement("button");
+        wordButton.type = "button";
+        wordButton.className = "word-token";
+        wordButton.dataset.lineIndex = String(lineIndex);
+        wordButton.dataset.wordIndex = String(word.wordIndex);
+        wordButton.textContent = word.text;
+
+        wordButton.addEventListener("click", () => {
+          const existingPicker = wrapper.querySelector(".chord-picker");
+          if (existingPicker) {
+            existingPicker.remove();
+            return;
+          }
+
+          document.querySelectorAll(".chord-picker").forEach((picker) => picker.remove());
+          createChordPicker(song, wordButton);
+        });
+
+        wrapper.append(chordLabel, wordButton);
+        return wrapper;
+      };
+
+      const renderSongs = () => {
+        songbookCards.innerHTML = "";
+
+        songs.forEach((song) => {
+          const card = document.createElement("article");
+          card.className = "song-card";
+
+          const title = document.createElement("h4");
+          title.textContent = song.title;
+          const artist = document.createElement("p");
+          artist.textContent = song.artist;
+          card.append(title, artist);
+
+          const lyricsContainer = document.createElement("div");
+          lyricsContainer.className = "lyrics-editor";
+
+          song.lyricsTokens.forEach((line) => {
+            const lineRow = document.createElement("div");
+            lineRow.className = "lyrics-line";
+            lineRow.dataset.lineIndex = String(line.lineIndex);
+
+            line.words.forEach((word) => {
+              lineRow.append(createWordElement(song, line.lineIndex, word));
+            });
+
+            lyricsContainer.append(lineRow);
+          });
+
+          card.append(lyricsContainer);
+          songbookCards.prepend(card);
+        });
+      };
 
       const showScreen = (screenName) => {
         screenPanels.forEach((panel) => {
@@ -100,14 +239,14 @@
           return;
         }
 
-        const card = document.createElement("article");
-        card.className = "song-card";
-        card.innerHTML = `
-          <h4>${title}</h4>
-          <p>${artist}</p>
-        `;
-
-        songbookCards.prepend(card);
+        songs.unshift({
+          title,
+          artist,
+          lyrics,
+          lyricsTokens: tokenizeLyrics(lyrics),
+          chordAssignments: [],
+        });
+        renderSongs();
 
         songForm.reset();
         songFormWrapper.classList.add("hidden");
