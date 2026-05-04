@@ -27,19 +27,6 @@
           <h3>Cancionero</h3>
           <div id="songbook-cards" class="songbook-cards"></div>
 
-          <section id="song-detail" class="song-detail hidden">
-            <h4 id="detail-title"></h4>
-            <p id="detail-artist" class="detail-artist"></p>
-
-            <div class="chord-picker">
-              <label for="chord-search">Buscar acorde</label>
-              <input id="chord-search" type="text" placeholder="Ej: F#m7, Bbmaj7, Dsus4" />
-              <div id="chord-tags" class="chord-tags"></div>
-            </div>
-
-            <p class="detail-help">Selecciona una palabra y luego un acorde para aplicarlo.</p>
-            <div id="lyrics-editor" class="lyrics-editor"></div>
-          </section>
         </section>
 
         <section id="screen-remix" class="screen-panel hidden">
@@ -71,8 +58,8 @@
               <label for="song-artist">Cantante o banda</label>
               <input id="song-artist" name="songArtist" type="text" required />
 
-              <label for="song-lyrics">Letra completa</label>
-              <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
+              <label for="song-lyrics">Letra completa (usa [Acorde]palabra para marcar acordes)</label>
+              <textarea id="song-lyrics" name="songLyrics" rows="8" placeholder="Ej: [G]Hoy [D]te [Em]vi" required></textarea>
 
               <button type="submit" class="submit-song">Guardar canción</button>
             </form>
