@@ -14,45 +14,52 @@
     <div class="layout">
       <aside class="sidebar">
         <nav>
-          <button class="piano-key">Cancionero</button>
-          <button class="piano-key">Remix</button>
-          <button class="piano-key">Acordes</button>
-          <button class="piano-key">NUEVA CANCIÓN</button>
+          <button class="piano-key" data-screen="cancionero">Cancionero</button>
+          <button class="piano-key" data-screen="remix">Remix</button>
+          <button class="piano-key" data-screen="acordes">Acordes</button>
+          <button class="piano-key" data-screen="nueva-cancion">NUEVA CANCIÓN</button>
         </nav>
       </aside>
 
       <main class="content">
-        <section class="welcome-card">
-          <h2>Bienvenido a Sib</h2>
-          <p>Un espacio musical con estilo de piano.</p>
-        </section>
-
-        <section class="new-song-section">
-          <h3>Nueva canción</h3>
-          <button id="open-song-form" class="emoji-song-button" aria-label="Agregar nueva canción">
-            🎵
-          </button>
-        </section>
-
-        <section id="song-form-wrapper" class="song-form-wrapper hidden">
-          <form id="song-form" class="song-form">
-            <h3>Agregar canción</h3>
-            <label for="song-title">Título de la canción</label>
-            <input id="song-title" name="songTitle" type="text" required />
-
-            <label for="song-artist">Cantante o banda</label>
-            <input id="song-artist" name="songArtist" type="text" required />
-
-            <label for="song-lyrics">Letra completa</label>
-            <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
-
-            <button type="submit" class="submit-song">Guardar canción</button>
-          </form>
-        </section>
-
-        <section class="songbook-section">
+        <section id="screen-cancionero" class="screen-panel hidden">
           <h3>Cancionero</h3>
           <div id="songbook-cards" class="songbook-cards"></div>
+        </section>
+
+        <section id="screen-remix" class="screen-panel hidden">
+          <h3>Remix</h3>
+          <p class="empty-text"></p>
+        </section>
+
+        <section id="screen-acordes" class="screen-panel hidden">
+          <h3>Acordes</h3>
+          <p class="empty-text"></p>
+        </section>
+
+        <section id="screen-nueva-cancion" class="screen-panel">
+          <section class="new-song-section">
+            <h3>Nueva canción</h3>
+            <button id="open-song-form" class="emoji-song-button" aria-label="Agregar nueva canción">
+              🎵
+            </button>
+          </section>
+
+          <section id="song-form-wrapper" class="song-form-wrapper hidden">
+            <form id="song-form" class="song-form">
+              <h3>Agregar canción</h3>
+              <label for="song-title">Título de la canción</label>
+              <input id="song-title" name="songTitle" type="text" required />
+
+              <label for="song-artist">Cantante o banda</label>
+              <input id="song-artist" name="songArtist" type="text" required />
+
+              <label for="song-lyrics">Letra completa</label>
+              <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
+
+              <button type="submit" class="submit-song">Guardar canción</button>
+            </form>
+          </section>
         </section>
       </main>
     </div>
@@ -62,6 +69,21 @@
       const songFormWrapper = document.getElementById("song-form-wrapper");
       const songForm = document.getElementById("song-form");
       const songbookCards = document.getElementById("songbook-cards");
+      const navButtons = document.querySelectorAll(".piano-key");
+      const screenPanels = document.querySelectorAll(".screen-panel");
+
+      const showScreen = (screenName) => {
+        screenPanels.forEach((panel) => {
+          const isTarget = panel.id === `screen-${screenName}`;
+          panel.classList.toggle("hidden", !isTarget);
+        });
+      };
+
+      navButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          showScreen(button.dataset.screen);
+        });
+      });
 
       openSongFormButton.addEventListener("click", () => {
         songFormWrapper.classList.toggle("hidden");
