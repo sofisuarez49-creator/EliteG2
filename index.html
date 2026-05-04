@@ -27,19 +27,6 @@
           <h3>Cancionero</h3>
           <div id="songbook-cards" class="songbook-cards"></div>
 
-          <section id="song-detail" class="song-detail hidden">
-            <h4 id="detail-title"></h4>
-            <p id="detail-artist" class="detail-artist"></p>
-
-            <div class="chord-picker">
-              <label for="chord-search">Buscar acorde</label>
-              <input id="chord-search" type="text" placeholder="Ej: F#m7, Bbmaj7, Dsus4" />
-              <div id="chord-tags" class="chord-tags"></div>
-            </div>
-
-            <p class="detail-help">Selecciona una palabra y luego un acorde para aplicarlo.</p>
-            <div id="lyrics-editor" class="lyrics-editor"></div>
-          </section>
         </section>
 
         <section id="screen-remix" class="screen-panel hidden">
@@ -71,8 +58,8 @@
               <label for="song-artist">Cantante o banda</label>
               <input id="song-artist" name="songArtist" type="text" required />
 
-              <label for="song-lyrics">Letra completa</label>
-              <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
+              <label for="song-lyrics">Letra completa (usa [Acorde]palabra para marcar acordes)</label>
+              <textarea id="song-lyrics" name="songLyrics" rows="8" placeholder="Ej: [G]Hoy [D]te [Em]vi" required></textarea>
 
               <button type="submit" class="submit-song">Guardar canción</button>
             </form>
@@ -86,7 +73,7 @@
         <button id="close-song-detail" class="close-song-detail" type="button" aria-label="Cerrar detalle">Volver</button>
         <h3 id="song-detail-title"></h3>
         <p id="song-detail-artist" class="song-detail-artist"></p>
-        <pre id="song-detail-lyrics" class="song-detail-lyrics"></pre>
+        <div id="song-detail-lyrics" class="song-detail-lyrics"></div>
       </article>
     </section>
 
@@ -103,6 +90,40 @@
       const songDetailTitle = document.getElementById("song-detail-title");
       const songDetailArtist = document.getElementById("song-detail-artist");
       const songDetailLyrics = document.getElementById("song-detail-lyrics");
+
+      const escapeHtml = (value) =>
+        value
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+
+      const formatLyricsWithChords = (lyrics) => {
+        const lines = lyrics.split("\n");
+
+        return lines
+          .map((line) => {
+            if (!line.trim()) return `<div class="lyrics-line"><br /></div>`;
+
+            const tokens = line.split(/(\s+)/);
+            const content = tokens
+              .map((token) => {
+                if (/^\s+$/.test(token)) return token.replace(/ /g, "&nbsp;");
+
+                const chordMatch = token.match(/^\[([^\]]+)\](.+)$/);
+                if (chordMatch) {
+                  const chord = escapeHtml(chordMatch[1]);
+                  const word = escapeHtml(chordMatch[2]);
+                  return `<span class="word-with-chord"><span class="chord">${chord}</span><span class="word">${word}</span></span>`;
+                }
+
+                return `<span class="word-with-chord"><span class="word">${escapeHtml(token)}</span></span>`;
+              })
+              .join("");
+
+            return `<div class="lyrics-line">${content}</div>`;
+          })
+          .join("");
+      };
 
       const appState = {
         activeScreen: "nueva-cancion",
@@ -125,12 +146,8 @@
         if (!song) return;
 
         songDetailTitle.textContent = song.title;
-        songDetailArtist.textContent = song.artist;
-        songDetailLyrics.textContent = song.chords.length
-          ? `${song.lyrics}
-
-Acordes: ${song.chords.join(", ")}`
-          : song.lyrics;
+        songDetailArtist.textContent = `(${song.artist})`;
+        songDetailLyrics.innerHTML = formatLyricsWithChords(song.lyrics);
         songDetailModal.classList.remove("hidden");
       };
 
@@ -146,8 +163,8 @@ Acordes: ${song.chords.join(", ")}`
           const songCard = document.createElement("article");
           songCard.className = "song-card";
           songCard.innerHTML = `
-            <h4>${song.title}</h4>
-            <p>${song.artist}</p>
+            <h4 class="song-title">${song.title}</h4>
+            <p class="song-artist">(${song.artist})</p>
           `;
           songCard.addEventListener("click", () => openSongDetail(song.id));
 
@@ -157,8 +174,8 @@ Acordes: ${song.chords.join(", ")}`
             const chordCard = document.createElement("article");
             chordCard.className = "song-card";
             chordCard.innerHTML = `
-              <h4>${song.title}</h4>
-              <p>${song.artist}</p>
+              <h4 class="song-title">${song.title}</h4>
+              <p class="song-artist">(${song.artist})</p>
               <p><strong>Acordes:</strong> ${song.chords.join(", ")}</p>
             `;
             chordsCards.prepend(chordCard);
@@ -189,7 +206,8 @@ Acordes: ${song.chords.join(", ")}`
         const title = songForm.songTitle.value.trim();
         const artist = songForm.songArtist.value.trim();
         const lyrics = songForm.songLyrics.value.trim();
-        const chords = [];
+        const chordMatches = [...lyrics.matchAll(/\[([^\]]+)\](?=\S)/g)];
+        const chords = [...new Set(chordMatches.map((match) => match[1].trim()).filter(Boolean))];
 
         if (!title || !artist || !lyrics) return;
 
