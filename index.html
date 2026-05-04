@@ -177,6 +177,38 @@
         chordAccidentalSelect.innerHTML = accidentalOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join("");
       };
 
+
+      const renderChordPalette = () => {
+        fillChordSelectors();
+        chordRootSelect.selectedIndex = 0;
+        chordQualitySelect.selectedIndex = 0;
+        chordAccidentalSelect.selectedIndex = 0;
+        chordEditorPanel.classList.add("hidden");
+      };
+
+      const renderSongLyricsEditor = (song) => {
+        songDetailLyricsEditor.innerHTML = "";
+        const lines = tokenizeLyrics(song.lyrics);
+        lines.forEach((tokens, lineIndex) => {
+          const line = document.createElement("p");
+          line.className = "lyrics-editor-line";
+          tokens.forEach((token, tokenIndex) => {
+            const tokenKey = `${lineIndex}-${tokenIndex}`;
+            const wordWrapper = document.createElement("button");
+            wordWrapper.type = "button";
+            wordWrapper.className = "lyrics-token";
+            const assignedChord = song.wordChords?.[tokenKey] || "";
+            wordWrapper.innerHTML = `<span class="token-chord">${assignedChord}</span><span>${token}</span>`;
+            wordWrapper.addEventListener("click", () => {
+              selectedTokenKey = tokenKey;
+              chordEditorPanel.classList.remove("hidden");
+            });
+            line.appendChild(wordWrapper);
+          });
+          songDetailLyricsEditor.appendChild(line);
+        });
+      };
+
       const openSongDetail = (songId, mode = "view") => {
         const song = songsById.get(songId);
         if (!song) return;
@@ -265,6 +297,13 @@
         songForm.reset();
         songFormWrapper.classList.add("hidden");
       };
+
+      saveTokenChordButton.addEventListener("click", () => {
+        const song = songsById.get(appState.activeSongId);
+        if (!song || !selectedTokenKey) return;
+        song.wordChords[selectedTokenKey] = buildChordLabel();
+        renderSongLyricsEditor(song);
+      });
 
       setActiveScreen(appState.activeScreen);
       loadSongs().catch((error) => {
