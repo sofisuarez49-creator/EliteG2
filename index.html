@@ -93,7 +93,22 @@
           songCard.innerHTML = `
             <h4>${song.title}</h4>
             <p>${song.artist}</p>
+            <button class="song-card-toggle" type="button">Ver letra y acordes</button>
+            <div class="song-card-details hidden">
+              <p><strong>Acordes designados:</strong> ${song.chords.join(", ")}</p>
+              <pre class="song-lyrics">${song.lyrics}</pre>
+            </div>
           `;
+
+          const toggleButton = songCard.querySelector(".song-card-toggle");
+          const details = songCard.querySelector(".song-card-details");
+
+          toggleButton.addEventListener("click", () => {
+            details.classList.toggle("hidden");
+            toggleButton.textContent = details.classList.contains("hidden")
+              ? "Ver letra y acordes"
+              : "Ocultar letra y acordes";
+          });
 
           const chordCard = document.createElement("article");
           chordCard.className = "song-card";
