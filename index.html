@@ -33,8 +33,10 @@
         </section>
 
         <section id="screen-acordes" class="screen-panel hidden">
-          <h3>Acordes</h3>
-          <p class="empty-text"></p>
+          <section id="chords-section">
+            <h3>Acordes</h3>
+            <div id="chords-cards" class="songbook-cards"></div>
+          </section>
         </section>
 
         <section id="screen-nueva-cancion" class="screen-panel">
@@ -57,6 +59,9 @@
               <label for="song-lyrics">Letra completa</label>
               <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
 
+              <label for="song-chords">Acordes (separados por coma)</label>
+              <input id="song-chords" name="songChords" type="text" placeholder="Am, F, C, G" required />
+
               <button type="submit" class="submit-song">Guardar canción</button>
             </form>
           </section>
@@ -78,6 +83,7 @@
       const songFormWrapper = document.getElementById("song-form-wrapper");
       const songForm = document.getElementById("song-form");
       const songbookCards = document.getElementById("songbook-cards");
+      const chordsCards = document.getElementById("chords-cards");
       const navButtons = document.querySelectorAll(".piano-key");
       const screenPanels = document.querySelectorAll(".screen-panel");
       const songDetailModal = document.getElementById("song-detail-modal");
@@ -105,16 +111,48 @@
         songDetailModal.classList.add("hidden");
       };
 
-      const showScreen = (screenName) => {
+      const appState = {
+        activeScreen: "nueva-cancion",
+        songs: [],
+      };
+
+      const renderSongs = () => {
+        songbookCards.innerHTML = "";
+        chordsCards.innerHTML = "";
+
+        appState.songs.forEach((song) => {
+          const songCard = document.createElement("article");
+          songCard.className = "song-card";
+          songCard.innerHTML = `
+            <h4>${song.title}</h4>
+            <p>${song.artist}</p>
+          `;
+
+          const chordCard = document.createElement("article");
+          chordCard.className = "song-card";
+          chordCard.innerHTML = `
+            <h4>${song.title}</h4>
+            <p>${song.artist}</p>
+            <p><strong>Acordes:</strong> ${song.chords.join(", ")}</p>
+          `;
+
+          songbookCards.prepend(songCard);
+          chordsCards.prepend(chordCard);
+        });
+      };
+
+      const setActiveScreen = (screenName) => {
+        appState.activeScreen = screenName;
+
         screenPanels.forEach((panel) => {
-          const isTarget = panel.id === `screen-${screenName}`;
+          const isTarget = panel.id === `screen-${appState.activeScreen}`;
           panel.classList.toggle("hidden", !isTarget);
         });
       };
 
       navButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          showScreen(button.dataset.screen);
+          setActiveScreen(button.dataset.screen);
         });
       });
 
@@ -128,43 +166,29 @@
         const title = songForm.songTitle.value.trim();
         const artist = songForm.songArtist.value.trim();
         const lyrics = songForm.songLyrics.value.trim();
+        const chords = songForm.songChords.value
+          .split(",")
+          .map((chord) => chord.trim())
+          .filter(Boolean);
 
-        if (!title || !artist || !lyrics) {
+        if (!title || !artist || !lyrics || !chords.length) {
           return;
         }
 
-        const songId = String(nextSongId++);
-        songsById.set(songId, { title, artist, lyrics });
+        appState.songs.push({
+          title,
+          artist,
+          lyrics,
+          chords,
+        });
 
-        const card = document.createElement("article");
-        card.className = "song-card";
-        card.dataset.songId = songId;
-        card.innerHTML = `
-          <h4>${title}</h4>
-          <p>${artist}</p>
-        `;
-
-        songbookCards.prepend(card);
-
+        renderSongs();
         songForm.reset();
         songFormWrapper.classList.add("hidden");
       });
 
-      songbookCards.addEventListener("click", (event) => {
-        const card = event.target.closest(".song-card");
-        if (!card || !songbookCards.contains(card)) {
-          return;
-        }
-
-        openSongDetail(card.dataset.songId);
-      });
-
-      closeSongDetailButton.addEventListener("click", closeSongDetail);
-      songDetailModal.addEventListener("click", (event) => {
-        if (event.target === songDetailModal) {
-          closeSongDetail();
-        }
-      });
+      setActiveScreen(appState.activeScreen);
+      renderSongs();
     </script>
   </body>
 </html>
