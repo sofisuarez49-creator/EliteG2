@@ -153,36 +153,6 @@
         chordAccidentalSelect.innerHTML = accidentalOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join("");
       };
 
-      const setSelectorsFromChord = (chord = "") => {
-        const match = chord.match(/^(Do|Re|Mi|Fa|Sol|La|Si)(#|b)?(m)?$/);
-        chordRootSelect.value = match?.[1] || "Do";
-        chordAccidentalSelect.value = match?.[2] || "";
-        chordQualitySelect.value = match?.[3] || "";
-      };
-
-      const renderSongLyricsEditor = (song) => {
-        songDetailLyricsEditor.innerHTML = "";
-        tokenizeLyrics(song.lyrics).forEach((tokens, lineIdx) => {
-          const line = document.createElement("div");
-          line.className = "lyrics-line";
-          tokens.forEach((word, tokenIdx) => {
-            const tokenKey = `${lineIdx}-${tokenIdx}`;
-            const token = document.createElement("button");
-            token.type = "button";
-            token.className = `lyric-token ${selectedTokenKey === tokenKey ? "active" : ""}`;
-            token.innerHTML = `<span class="token-chord">${song.wordChords[tokenKey] || ""}</span><span class="token-word">${word}</span>`;
-            token.addEventListener("click", () => {
-              selectedTokenKey = tokenKey;
-              chordEditorPanel.classList.remove("hidden");
-              setSelectorsFromChord(song.wordChords[tokenKey] || "");
-              renderSongLyricsEditor(song);
-            });
-            line.appendChild(token);
-          });
-          songDetailLyricsEditor.appendChild(line);
-        });
-      };
-
       const openSongDetail = (songId, mode = "view") => {
         const song = songsById.get(songId);
         if (!song) return;
@@ -196,7 +166,7 @@
         songDetailLyrics.classList.toggle("hidden", isChordMode);
 
         if (isChordMode) {
-          chordEditorPanel.classList.add("hidden");
+          renderChordPalette();
           renderSongLyricsEditor(song);
         } else {
           songDetailLyrics.textContent = song.lyrics;
@@ -228,12 +198,6 @@
       openSongFormButton.addEventListener("click", () => songFormWrapper.classList.toggle("hidden"));
       closeSongDetailButton.addEventListener("click", closeSongDetail);
       songDetailModal.addEventListener("click", (event) => { if (event.target === songDetailModal) closeSongDetail(); });
-      saveTokenChordButton.addEventListener("click", () => {
-        if (!selectedTokenKey || !appState.activeSongId) return;
-        const song = songsById.get(appState.activeSongId);
-        song.wordChords[selectedTokenKey] = buildChordLabel();
-        renderSongLyricsEditor(song);
-      });
 
       songForm.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -250,7 +214,6 @@
       });
 
       setActiveScreen(appState.activeScreen);
-      fillChordSelectors();
       renderSongs();
     </script>
   </body>
