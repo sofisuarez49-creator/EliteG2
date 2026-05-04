@@ -213,7 +213,6 @@
         const song = songsById.get(songId);
         if (!song) return;
         appState.activeSongId = song.id;
-        selectedTokenKey = null;
         songDetailTitle.textContent = song.title;
         songDetailArtist.textContent = song.artist;
 
@@ -222,6 +221,7 @@
         songDetailLyrics.classList.toggle("hidden", isChordMode);
 
         if (isChordMode) {
+          selectedTokenKey = null;
           renderChordPalette();
           renderSongLyricsEditor(song);
         } else {
@@ -230,7 +230,11 @@
         songDetailModal.classList.remove("hidden");
       };
 
-      const closeSongDetail = () => songDetailModal.classList.add("hidden");
+      const closeSongDetail = () => {
+        songDetailModal.classList.add("hidden");
+        selectedTokenKey = null;
+        chordEditorPanel.classList.add("hidden");
+      };
 
       const renderSongs = () => {
         songsById.clear();
