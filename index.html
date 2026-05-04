@@ -70,7 +70,10 @@
 
     <section id="song-detail-modal" class="song-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="song-detail-title">
       <article class="song-detail-panel">
-        <button id="close-song-detail" class="close-song-detail" type="button" aria-label="Cerrar detalle">Volver</button>
+        <div class="detail-actions">
+          <button id="close-song-detail" class="close-song-detail" type="button" aria-label="Cerrar detalle">Volver</button>
+          <button id="save-song-chords" class="submit-song hidden" type="button">Guardar</button>
+        </div>
         <h3 id="song-detail-title"></h3>
         <p id="song-detail-artist" class="song-detail-artist"></p>
         <div id="song-detail-chord-workspace" class="song-detail-chord-workspace hidden">
@@ -104,6 +107,8 @@
         collection,
         addDoc,
         getDocs,
+        doc,
+        updateDoc,
         serverTimestamp
       } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
@@ -141,6 +146,7 @@
       const chordQualitySelect = document.getElementById("chord-quality-select");
       const chordAccidentalSelect = document.getElementById("chord-accidental-select");
       const saveTokenChordButton = document.getElementById("save-token-chord");
+      const saveSongChordsButton = document.getElementById("save-song-chords");
 
       const appState = { activeScreen: "nueva-cancion", songs: [] };
       const songsById = new Map();
@@ -221,6 +227,7 @@
         const isChordMode = mode === "chords";
         songDetailChordWorkspace.classList.toggle("hidden", !isChordMode);
         songDetailLyrics.classList.toggle("hidden", isChordMode);
+        saveSongChordsButton.classList.toggle("hidden", !isChordMode);
 
         if (isChordMode) {
           selectedTokenKey = null;
@@ -303,6 +310,29 @@
         songForm.reset();
         songFormWrapper.classList.add("hidden");
       };
+
+
+      const saveSongWordChords = async () => {
+        const song = songsById.get(appState.activeSongId);
+        if (!song) {
+          alert("No hay una canción activa para guardar.");
+          return;
+        }
+
+        try {
+          await updateDoc(doc(db, "songs", song.id), {
+            wordChords: song.wordChords || {}
+          });
+          alert("Acordes guardados correctamente.");
+        } catch (error) {
+          console.error("Error guardando acordes de la canción:", error);
+          alert("No se pudieron guardar los acordes. Inténtalo de nuevo.");
+        }
+      };
+
+      saveSongChordsButton.addEventListener("click", () => {
+        saveSongWordChords();
+      });
 
       saveTokenChordButton.addEventListener("click", () => {
         const song = songsById.get(appState.activeSongId);
