@@ -330,3 +330,25 @@ body {
   color: #666;
   font-size: 0.95rem;
 }
+
+
+.song-detail-chord-workspace {
+  margin-top: 12px;
+}
+
+.lyrics-editor {
+  gap: 16px;
+}
+
+.lyrics-line {
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.lyric-token {
+  gap: 4px;
+}
+
+.token-chord {
+  min-height: 18px;
+}
