@@ -74,8 +74,22 @@
         <h3 id="song-detail-title"></h3>
         <p id="song-detail-artist" class="song-detail-artist"></p>
         <div id="song-detail-chord-workspace" class="song-detail-chord-workspace hidden">
-          <p class="detail-help">Selecciona una palabra y luego un acorde para asignarlo.</p>
-          <div id="modal-chord-tags" class="chord-tags"></div>
+          <p class="detail-help">Haz click en una palabra para elegir su acorde y luego guarda.</p>
+          <div id="chord-editor-panel" class="chord-editor-panel hidden">
+            <div class="chord-editor-row">
+              <label for="chord-root-select">Acorde</label>
+              <select id="chord-root-select"></select>
+            </div>
+            <div class="chord-editor-row">
+              <label for="chord-quality-select">Mayor/Menor</label>
+              <select id="chord-quality-select"></select>
+            </div>
+            <div class="chord-editor-row">
+              <label for="chord-accidental-select">Bemol / Sostenido</label>
+              <select id="chord-accidental-select"></select>
+            </div>
+            <button id="save-token-chord" type="button" class="submit-song">Guardar</button>
+          </div>
           <div id="song-detail-lyrics-editor" class="lyrics-editor"></div>
         </div>
         <pre id="song-detail-lyrics" class="song-detail-lyrics"></pre>
@@ -97,16 +111,27 @@
       const songDetailLyrics = document.getElementById("song-detail-lyrics");
       const songDetailChordWorkspace = document.getElementById("song-detail-chord-workspace");
       const songDetailLyricsEditor = document.getElementById("song-detail-lyrics-editor");
-      const modalChordTags = document.getElementById("modal-chord-tags");
+      const chordEditorPanel = document.getElementById("chord-editor-panel");
+      const chordRootSelect = document.getElementById("chord-root-select");
+      const chordQualitySelect = document.getElementById("chord-quality-select");
+      const chordAccidentalSelect = document.getElementById("chord-accidental-select");
+      const saveTokenChordButton = document.getElementById("save-token-chord");
 
       const appState = { activeScreen: "nueva-cancion", songs: [] };
       let nextSongId = 1;
       const songsById = new Map();
       let selectedTokenKey = null;
 
-      const roots = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si", "Reb", "Mib", "Solb", "Lab", "Sib"];
-      const qualities = ["", "m"];
-      const chordCatalog = roots.flatMap((root) => qualities.map((quality) => `${root}${quality}`));
+      const naturalRoots = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"];
+      const accidentalOptions = [
+        { label: "Natural", value: "" },
+        { label: "Sostenido (#)", value: "#" },
+        { label: "Bemol (b)", value: "b" }
+      ];
+      const qualityOptions = [
+        { label: "Mayor", value: "" },
+        { label: "Menor", value: "m" }
+      ];
 
       const setActiveScreen = (screenName) => {
         appState.activeScreen = screenName;
@@ -115,42 +140,17 @@
 
       const tokenizeLyrics = (lyrics) => lyrics.split("\n").map((line) => line.trim().split(/\s+/).filter(Boolean));
 
-      const renderChordPalette = () => {
-        modalChordTags.innerHTML = "";
-        chordCatalog.forEach((chord) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "chord-chip";
-          button.textContent = chord;
-          button.addEventListener("click", () => {
-            if (!selectedTokenKey || !appState.activeSongId) return;
-            const song = songsById.get(appState.activeSongId);
-            song.wordChords[selectedTokenKey] = chord;
-            renderSongLyricsEditor(song);
-          });
-          modalChordTags.appendChild(button);
-        });
+      const buildChordLabel = () => {
+        const root = chordRootSelect.value;
+        const accidental = chordAccidentalSelect.value;
+        const quality = chordQualitySelect.value;
+        return `${root}${accidental}${quality}`;
       };
 
-      const renderSongLyricsEditor = (song) => {
-        songDetailLyricsEditor.innerHTML = "";
-        tokenizeLyrics(song.lyrics).forEach((tokens, lineIdx) => {
-          const line = document.createElement("div");
-          line.className = "lyrics-line";
-          tokens.forEach((word, tokenIdx) => {
-            const tokenKey = `${lineIdx}-${tokenIdx}`;
-            const token = document.createElement("button");
-            token.type = "button";
-            token.className = `lyric-token ${selectedTokenKey === tokenKey ? "active" : ""}`;
-            token.innerHTML = `<span class="token-chord">${song.wordChords[tokenKey] || ""}</span><span>${word}</span>`;
-            token.addEventListener("click", () => {
-              selectedTokenKey = tokenKey;
-              renderSongLyricsEditor(song);
-            });
-            line.appendChild(token);
-          });
-          songDetailLyricsEditor.appendChild(line);
-        });
+      const fillChordSelectors = () => {
+        chordRootSelect.innerHTML = naturalRoots.map((root) => `<option value="${root}">${root}</option>`).join("");
+        chordQualitySelect.innerHTML = qualityOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join("");
+        chordAccidentalSelect.innerHTML = accidentalOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join("");
       };
 
       const openSongDetail = (songId, mode = "view") => {
