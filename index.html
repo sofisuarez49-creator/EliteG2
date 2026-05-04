@@ -151,6 +151,7 @@
       const appState = { activeScreen: "nueva-cancion", songs: [] };
       const songsById = new Map();
       let selectedTokenKey = null;
+      let selectedTokenElement = null;
 
       const naturalRoots = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"];
       const accidentalOptions = [
@@ -192,8 +193,34 @@
         chordEditorPanel.classList.add("hidden");
       };
 
+      const positionChordEditorNearToken = () => {
+        if (!selectedTokenElement) return;
+        const tokenRect = selectedTokenElement.getBoundingClientRect();
+        const workspaceRect = songDetailChordWorkspace.getBoundingClientRect();
+        const panelWidth = 250;
+        const panelHeight = 210;
+        const margin = 8;
+
+        let left = tokenRect.left - workspaceRect.left;
+        let top = tokenRect.bottom - workspaceRect.top + margin;
+
+        if (left + panelWidth > workspaceRect.width - margin) {
+          left = workspaceRect.width - panelWidth - margin;
+        }
+        if (left < margin) left = margin;
+
+        if (top + panelHeight > workspaceRect.height - margin) {
+          top = tokenRect.top - workspaceRect.top - panelHeight - margin;
+        }
+        if (top < margin) top = margin;
+
+        chordEditorPanel.style.left = `${left}px`;
+        chordEditorPanel.style.top = `${top}px`;
+      };
+
       const renderSongLyricsEditor = (song) => {
         songDetailLyricsEditor.innerHTML = "";
+        selectedTokenElement = null;
         const lines = tokenizeLyrics(song.lyrics);
         lines.forEach((tokens, lineIndex) => {
           const line = document.createElement("p");
@@ -204,17 +231,21 @@
             wordWrapper.type = "button";
             wordWrapper.className = "lyrics-token";
             if (tokenKey === selectedTokenKey) wordWrapper.classList.add("active");
+            if (tokenKey === selectedTokenKey) selectedTokenElement = wordWrapper;
             const assignedChord = song.wordChords?.[tokenKey] || "";
             wordWrapper.innerHTML = `<span class="token-chord">${assignedChord}</span><span>${token}</span>`;
             wordWrapper.addEventListener("click", () => {
               selectedTokenKey = tokenKey;
+              selectedTokenElement = wordWrapper;
               chordEditorPanel.classList.remove("hidden");
+              positionChordEditorNearToken();
               renderSongLyricsEditor(song);
             });
             line.appendChild(wordWrapper);
           });
           songDetailLyricsEditor.appendChild(line);
         });
+        if (selectedTokenElement) positionChordEditorNearToken();
       };
 
       const openSongDetail = (songId, mode = "view") => {
@@ -242,6 +273,7 @@
       const closeSongDetail = () => {
         songDetailModal.classList.add("hidden");
         selectedTokenKey = null;
+        selectedTokenElement = null;
         chordEditorPanel.classList.add("hidden");
       };
 
@@ -269,6 +301,15 @@
       openSongFormButton.addEventListener("click", () => songFormWrapper.classList.toggle("hidden"));
       closeSongDetailButton.addEventListener("click", closeSongDetail);
       songDetailModal.addEventListener("click", (event) => { if (event.target === songDetailModal) closeSongDetail(); });
+      songDetailChordWorkspace.addEventListener("click", (event) => {
+        if (!event.target.closest(".lyrics-token") && !event.target.closest("#chord-editor-panel")) {
+          selectedTokenKey = null;
+          selectedTokenElement = null;
+          chordEditorPanel.classList.add("hidden");
+          const activeSong = songsById.get(appState.activeSongId);
+          if (activeSong) renderSongLyricsEditor(activeSong);
+        }
+      });
 
       songForm.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -340,6 +381,8 @@
         song.wordChords[selectedTokenKey] = buildChordLabel();
         renderSongLyricsEditor(song);
       });
+
+      window.addEventListener("resize", positionChordEditorNearToken);
 
       setActiveScreen(appState.activeScreen);
       loadSongs().catch((error) => {

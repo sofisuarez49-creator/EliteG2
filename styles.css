@@ -335,6 +335,7 @@ body {
 
 .song-detail-chord-workspace {
   margin-top: 12px;
+  position: relative;
 }
 
 .lyrics-editor {
@@ -342,22 +343,37 @@ body {
 }
 
 .chord-editor-panel {
+  position: absolute;
+  z-index: 4;
+  width: 250px;
   border: 1px solid #e4e4e4;
   border-radius: 12px;
-  padding: 12px;
-  background: #fbfbfb;
+  padding: 10px;
+  background: #ffffff;
   margin: 8px 0 14px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
 .chord-editor-row {
   display: grid;
-  gap: 4px;
+  gap: 2px;
+}
+
+.chord-editor-row label {
+  font-size: 0.88rem;
 }
 
 .chord-editor-row select {
   border: 1px solid #d7d7d7;
   border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.92rem;
+}
+
+#save-token-chord.submit-song {
+  margin-top: 2px;
   padding: 8px 10px;
+  font-size: 0.92rem;
 }
