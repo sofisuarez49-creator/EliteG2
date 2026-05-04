@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sib</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" href="data:," />
   </head>
   <body>
     <header class="top-header">
@@ -93,15 +94,6 @@
     </section>
 
     <script>
-      const CHORD_CATALOG = Object.freeze({
-        bases: ["A", "A#", "Bb", "B", "C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab"],
-        variants: ["", "m", "7", "maj7", "m7", "sus2", "sus4", "dim", "aug", "add9", "6", "9"]
-      });
-
-      const CHORD_OPTIONS = Object.freeze(
-        CHORD_CATALOG.bases.flatMap((base) => CHORD_CATALOG.variants.map((variant) => `${base}${variant}`))
-      );
-
       const openSongFormButton = document.getElementById("open-song-form");
       const songFormWrapper = document.getElementById("song-form-wrapper");
       const songForm = document.getElementById("song-form");
@@ -115,28 +107,36 @@
       const songDetailArtist = document.getElementById("song-detail-artist");
       const songDetailLyrics = document.getElementById("song-detail-lyrics");
 
+      const appState = {
+        activeScreen: "nueva-cancion",
+        songs: [],
+      };
+
       let nextSongId = 1;
       const songsById = new Map();
 
+      const setActiveScreen = (screenName) => {
+        appState.activeScreen = screenName;
+        screenPanels.forEach((panel) => {
+          const isTarget = panel.id === `screen-${screenName}`;
+          panel.classList.toggle("hidden", !isTarget);
+        });
+      };
+
       const openSongDetail = (songId) => {
         const song = songsById.get(songId);
-        if (!song) {
-          return;
-        }
+        if (!song) return;
 
         songDetailTitle.textContent = song.title;
         songDetailArtist.textContent = song.artist;
-        songDetailLyrics.textContent = song.lyrics;
+        songDetailLyrics.textContent = `${song.lyrics}
+
+Acordes: ${song.chords.join(", ")}`;
         songDetailModal.classList.remove("hidden");
       };
 
       const closeSongDetail = () => {
         songDetailModal.classList.add("hidden");
-      };
-
-      const appState = {
-        activeScreen: "nueva-cancion",
-        songs: [],
       };
 
       const renderSongs = () => {
@@ -149,22 +149,8 @@
           songCard.innerHTML = `
             <h4>${song.title}</h4>
             <p>${song.artist}</p>
-            <button class="song-card-toggle" type="button">Ver letra y acordes</button>
-            <div class="song-card-details hidden">
-              <p><strong>Acordes designados:</strong> ${song.chords.join(", ")}</p>
-              <pre class="song-lyrics">${song.lyrics}</pre>
-            </div>
           `;
-
-          const toggleButton = songCard.querySelector(".song-card-toggle");
-          const details = songCard.querySelector(".song-card-details");
-
-          toggleButton.addEventListener("click", () => {
-            details.classList.toggle("hidden");
-            toggleButton.textContent = details.classList.contains("hidden")
-              ? "Ver letra y acordes"
-              : "Ocultar letra y acordes";
-          });
+          songCard.addEventListener("click", () => openSongDetail(song.id));
 
           const chordCard = document.createElement("article");
           chordCard.className = "song-card";
@@ -179,92 +165,6 @@
         });
       };
 
-      const setActiveScreen = (screenName) => {
-        appState.activeScreen = screenName;
-
-        screenPanels.forEach((panel) => {
-          const isTarget = panel.id === `screen-${appState.activeScreen}`;
-          panel.classList.toggle("hidden", !isTarget);
-        });
-      };
-
-      const tokenizeLine = (line) => line.trim().split(/\s+/).filter(Boolean).map((word) => ({ word, chord: null }));
-
-      const renderChordTags = (query = "") => {
-        const normalized = query.trim().toLowerCase();
-        const filtered = CHORD_OPTIONS.filter((chord) => chord.toLowerCase().includes(normalized)).slice(0, 40);
-
-        chordTags.innerHTML = "";
-
-        filtered.forEach((chord) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "chord-chip";
-          button.textContent = chord;
-          button.addEventListener("click", () => applyChordToActiveWord(chord));
-          chordTags.append(button);
-        });
-      };
-
-      const renderLyrics = () => {
-        const song = songs.find((item) => item.id === activeSongId);
-        if (!song) return;
-
-        lyricsEditor.innerHTML = "";
-
-        song.lines.forEach((line, lineIndex) => {
-          const row = document.createElement("div");
-          row.className = "lyrics-line";
-
-          line.forEach((token, wordIndex) => {
-            const tokenEl = document.createElement("button");
-            tokenEl.type = "button";
-            tokenEl.className = "lyric-token";
-            tokenEl.innerHTML = `<span class="token-chord">${token.chord ?? ""}</span><span>${token.word}</span>`;
-
-            const isActive = activeWord && activeWord.lineIndex === lineIndex && activeWord.wordIndex === wordIndex;
-            tokenEl.classList.toggle("active", Boolean(isActive));
-
-            tokenEl.addEventListener("click", () => {
-              activeWord = { lineIndex, wordIndex };
-              renderLyrics();
-            });
-
-            row.append(tokenEl);
-          });
-
-          lyricsEditor.append(row);
-        });
-      };
-
-      const openSongDetail = (songId) => {
-        activeSongId = songId;
-        activeWord = null;
-
-        const song = songs.find((item) => item.id === songId);
-        if (!song) return;
-
-        detailTitle.textContent = song.title;
-        detailArtist.textContent = song.artist;
-        songDetail.classList.remove("hidden");
-
-        renderChordTags(chordSearch.value);
-        renderLyrics();
-      };
-
-      const applyChordToActiveWord = (chord) => {
-        if (!activeWord || activeSongId === null) return;
-
-        const song = songs.find((item) => item.id === activeSongId);
-        if (!song) return;
-
-        const token = song.lines[activeWord.lineIndex]?.[activeWord.wordIndex];
-        if (!token) return;
-
-        token.chord = chord;
-        renderLyrics();
-      };
-
       navButtons.forEach((button) => {
         button.addEventListener("click", () => {
           setActiveScreen(button.dataset.screen);
@@ -275,8 +175,11 @@
         songFormWrapper.classList.toggle("hidden");
       });
 
-      chordSearch.addEventListener("input", () => {
-        renderChordTags(chordSearch.value);
+      closeSongDetailButton.addEventListener("click", closeSongDetail);
+      songDetailModal.addEventListener("click", (event) => {
+        if (event.target === songDetailModal) {
+          closeSongDetail();
+        }
       });
 
       songForm.addEventListener("submit", (event) => {
@@ -290,22 +193,22 @@
           .map((chord) => chord.trim())
           .filter(Boolean);
 
-        if (!title || !artist || !lyrics || !chords.length) {
-          return;
-        }
+        if (!title || !artist || !lyrics || !chords.length) return;
 
-        appState.songs.push({
+        const song = {
+          id: nextSongId++,
           title,
           artist,
           lyrics,
           chords,
-        });
+        };
+
+        appState.songs.push(song);
+        songsById.set(song.id, song);
 
         renderSongs();
         songForm.reset();
         songFormWrapper.classList.add("hidden");
-
-        renderSongDetail(title, artist, lyrics);
       });
 
       setActiveScreen(appState.activeScreen);
