@@ -74,9 +74,6 @@
               <label for="song-lyrics">Letra completa</label>
               <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
 
-              <label for="song-chords">Acordes (separados por coma)</label>
-              <input id="song-chords" name="songChords" type="text" placeholder="Am, F, C, G" required />
-
               <button type="submit" class="submit-song">Guardar canción</button>
             </form>
           </section>
@@ -129,9 +126,11 @@
 
         songDetailTitle.textContent = song.title;
         songDetailArtist.textContent = song.artist;
-        songDetailLyrics.textContent = `${song.lyrics}
+        songDetailLyrics.textContent = song.chords.length
+          ? `${song.lyrics}
 
-Acordes: ${song.chords.join(", ")}`;
+Acordes: ${song.chords.join(", ")}`
+          : song.lyrics;
         songDetailModal.classList.remove("hidden");
       };
 
@@ -152,16 +151,18 @@ Acordes: ${song.chords.join(", ")}`;
           `;
           songCard.addEventListener("click", () => openSongDetail(song.id));
 
-          const chordCard = document.createElement("article");
-          chordCard.className = "song-card";
-          chordCard.innerHTML = `
-            <h4>${song.title}</h4>
-            <p>${song.artist}</p>
-            <p><strong>Acordes:</strong> ${song.chords.join(", ")}</p>
-          `;
-
           songbookCards.prepend(songCard);
-          chordsCards.prepend(chordCard);
+
+          if (song.chords.length) {
+            const chordCard = document.createElement("article");
+            chordCard.className = "song-card";
+            chordCard.innerHTML = `
+              <h4>${song.title}</h4>
+              <p>${song.artist}</p>
+              <p><strong>Acordes:</strong> ${song.chords.join(", ")}</p>
+            `;
+            chordsCards.prepend(chordCard);
+          }
         });
       };
 
@@ -188,12 +189,9 @@ Acordes: ${song.chords.join(", ")}`;
         const title = songForm.songTitle.value.trim();
         const artist = songForm.songArtist.value.trim();
         const lyrics = songForm.songLyrics.value.trim();
-        const chords = songForm.songChords.value
-          .split(",")
-          .map((chord) => chord.trim())
-          .filter(Boolean);
+        const chords = [];
 
-        if (!title || !artist || !lyrics || !chords.length) return;
+        if (!title || !artist || !lyrics) return;
 
         const song = {
           id: nextSongId++,
