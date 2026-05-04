@@ -289,6 +289,8 @@
         renderSongs();
         songForm.reset();
         songFormWrapper.classList.add("hidden");
+
+        renderSongDetail(title, artist, lyrics);
       });
 
       setActiveScreen(appState.activeScreen);
