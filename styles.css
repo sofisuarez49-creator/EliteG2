@@ -302,7 +302,7 @@ body {
   gap: 8px;
 }
 
-.lyric-token {
+.lyrics-token {
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -314,9 +314,11 @@ body {
   gap: 6px;
 }
 
-.lyric-token.active {
-  outline: 1px solid #111;
-  outline-offset: 4px;
+.lyrics-token.active {
+  color: #fff;
+  background: #0f172a;
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
   border-radius: 8px;
 }
 
