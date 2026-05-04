@@ -47,8 +47,10 @@
         </section>
 
         <section id="screen-acordes" class="screen-panel hidden">
-          <h3>Acordes</h3>
-          <p class="empty-text"></p>
+          <section id="chords-section">
+            <h3>Acordes</h3>
+            <div id="chords-cards" class="songbook-cards"></div>
+          </section>
         </section>
 
         <section id="screen-nueva-cancion" class="screen-panel">
@@ -71,12 +73,24 @@
               <label for="song-lyrics">Letra completa</label>
               <textarea id="song-lyrics" name="songLyrics" rows="8" required></textarea>
 
+              <label for="song-chords">Acordes (separados por coma)</label>
+              <input id="song-chords" name="songChords" type="text" placeholder="Am, F, C, G" required />
+
               <button type="submit" class="submit-song">Guardar canción</button>
             </form>
           </section>
         </section>
       </main>
     </div>
+
+    <section id="song-detail-modal" class="song-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="song-detail-title">
+      <article class="song-detail-panel">
+        <button id="close-song-detail" class="close-song-detail" type="button" aria-label="Cerrar detalle">Volver</button>
+        <h3 id="song-detail-title"></h3>
+        <p id="song-detail-artist" class="song-detail-artist"></p>
+        <pre id="song-detail-lyrics" class="song-detail-lyrics"></pre>
+      </article>
+    </section>
 
     <script>
       const CHORD_CATALOG = Object.freeze({
@@ -92,22 +106,69 @@
       const songFormWrapper = document.getElementById("song-form-wrapper");
       const songForm = document.getElementById("song-form");
       const songbookCards = document.getElementById("songbook-cards");
+      const chordsCards = document.getElementById("chords-cards");
       const navButtons = document.querySelectorAll(".piano-key");
       const screenPanels = document.querySelectorAll(".screen-panel");
-      const songDetail = document.getElementById("song-detail");
-      const detailTitle = document.getElementById("detail-title");
-      const detailArtist = document.getElementById("detail-artist");
-      const lyricsEditor = document.getElementById("lyrics-editor");
-      const chordTags = document.getElementById("chord-tags");
-      const chordSearch = document.getElementById("chord-search");
+      const songDetailModal = document.getElementById("song-detail-modal");
+      const closeSongDetailButton = document.getElementById("close-song-detail");
+      const songDetailTitle = document.getElementById("song-detail-title");
+      const songDetailArtist = document.getElementById("song-detail-artist");
+      const songDetailLyrics = document.getElementById("song-detail-lyrics");
 
-      const songs = [];
-      let activeSongId = null;
-      let activeWord = null;
+      let nextSongId = 1;
+      const songsById = new Map();
 
-      const showScreen = (screenName) => {
+      const openSongDetail = (songId) => {
+        const song = songsById.get(songId);
+        if (!song) {
+          return;
+        }
+
+        songDetailTitle.textContent = song.title;
+        songDetailArtist.textContent = song.artist;
+        songDetailLyrics.textContent = song.lyrics;
+        songDetailModal.classList.remove("hidden");
+      };
+
+      const closeSongDetail = () => {
+        songDetailModal.classList.add("hidden");
+      };
+
+      const appState = {
+        activeScreen: "nueva-cancion",
+        songs: [],
+      };
+
+      const renderSongs = () => {
+        songbookCards.innerHTML = "";
+        chordsCards.innerHTML = "";
+
+        appState.songs.forEach((song) => {
+          const songCard = document.createElement("article");
+          songCard.className = "song-card";
+          songCard.innerHTML = `
+            <h4>${song.title}</h4>
+            <p>${song.artist}</p>
+          `;
+
+          const chordCard = document.createElement("article");
+          chordCard.className = "song-card";
+          chordCard.innerHTML = `
+            <h4>${song.title}</h4>
+            <p>${song.artist}</p>
+            <p><strong>Acordes:</strong> ${song.chords.join(", ")}</p>
+          `;
+
+          songbookCards.prepend(songCard);
+          chordsCards.prepend(chordCard);
+        });
+      };
+
+      const setActiveScreen = (screenName) => {
+        appState.activeScreen = screenName;
+
         screenPanels.forEach((panel) => {
-          const isTarget = panel.id === `screen-${screenName}`;
+          const isTarget = panel.id === `screen-${appState.activeScreen}`;
           panel.classList.toggle("hidden", !isTarget);
         });
       };
@@ -191,7 +252,7 @@
 
       navButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          showScreen(button.dataset.screen);
+          setActiveScreen(button.dataset.screen);
         });
       });
 
@@ -209,36 +270,29 @@
         const title = songForm.songTitle.value.trim();
         const artist = songForm.songArtist.value.trim();
         const lyrics = songForm.songLyrics.value.trim();
+        const chords = songForm.songChords.value
+          .split(",")
+          .map((chord) => chord.trim())
+          .filter(Boolean);
 
-        if (!title || !artist || !lyrics) return;
+        if (!title || !artist || !lyrics || !chords.length) {
+          return;
+        }
 
-        const newSong = {
-          id: crypto.randomUUID(),
+        appState.songs.push({
           title,
           artist,
-          lines: lyrics.split("\n").filter((line) => line.trim()).map(tokenizeLine)
-        };
-
-        songs.unshift(newSong);
-
-        const card = document.createElement("article");
-        card.className = "song-card";
-        card.innerHTML = `
-          <h4>${title}</h4>
-          <p>${artist}</p>
-        `;
-        card.addEventListener("click", () => {
-          showScreen("cancionero");
-          openSongDetail(newSong.id);
+          lyrics,
+          chords,
         });
 
-        songbookCards.prepend(card);
-
+        renderSongs();
         songForm.reset();
         songFormWrapper.classList.add("hidden");
       });
 
-      renderChordTags();
+      setActiveScreen(appState.activeScreen);
+      renderSongs();
     </script>
   </body>
 </html>

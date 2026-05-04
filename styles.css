@@ -176,6 +176,7 @@ body {
   padding: 14px;
   background: #fbfbfb;
   box-shadow: 5px 5px 10px #e0e0e0;
+  cursor: pointer;
 }
 
 .song-card h4 {
@@ -185,6 +186,48 @@ body {
 .song-card p {
   margin: 0;
   color: #555;
+}
+
+.song-detail-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.song-detail-panel {
+  width: min(760px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 14px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+}
+
+.close-song-detail {
+  border: 1px solid #222;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.song-detail-artist {
+  color: #666;
+  margin-top: 4px;
+}
+
+.song-detail-lyrics {
+  margin: 16px 0 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  line-height: 1.45;
 }
 
 .hidden {
