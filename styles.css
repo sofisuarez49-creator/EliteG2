@@ -315,6 +315,20 @@ body {
   gap: 4px;
 }
 
+.lyrics-token.active {
+  color: #c62828;
+}
+
+.lyrics-token.active .token-chord {
+  color: #8e1a1a;
+}
+
+.lyrics-token.active span:last-child {
+  background: #ffe3e3;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
 .token-chord {
   min-height: 16px;
   font-size: 0.8rem;
