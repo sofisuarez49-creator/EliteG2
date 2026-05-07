@@ -356,6 +356,10 @@ body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
+
+.chord-editor-panel.hidden {
+  display: none;
+}
 .chord-editor-row {
   display: grid;
   gap: 2px;
