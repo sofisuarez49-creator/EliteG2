@@ -179,6 +179,31 @@ body {
   cursor: pointer;
 }
 
+.song-context-menu {
+  position: absolute;
+  z-index: 1200;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  overflow: hidden;
+}
+
+.song-context-menu button {
+  border: 0;
+  background: #fff;
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.song-context-menu button:hover {
+  background: #f2f2f2;
+}
+
 .song-card h4 {
   margin: 0 0 6px;
 }
@@ -232,6 +257,32 @@ body {
 
 .hidden {
   display: none;
+}
+
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1300;
+  padding: 20px;
+}
+
+.confirm-panel {
+  width: min(460px, 100%);
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e8e8e8;
+  padding: 20px;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 @media (max-width: 768px) {

@@ -34,6 +34,16 @@
           <p class="empty-text"></p>
         </section>
 
+        <section id="screen-secciones" class="screen-panel hidden">
+          <h3>Secciones</h3>
+          <p id="sections-song-label" class="empty-text">Selecciona una canción desde el menú contextual.</p>
+        </section>
+
+        <section id="screen-repeticiones" class="screen-panel hidden">
+          <h3>Repeticiones</h3>
+          <p id="repetitions-song-label" class="empty-text">Selecciona una canción desde el menú contextual.</p>
+        </section>
+
         <section id="screen-acordes" class="screen-panel hidden">
           <section id="chords-section">
             <h3>Acordes</h3>
@@ -99,6 +109,24 @@
       </article>
     </section>
 
+    <div id="song-context-menu" class="song-context-menu hidden" role="menu" aria-label="Opciones de canción">
+      <button type="button" data-action="sections">Secciones</button>
+      <button type="button" data-action="repetitions">Repeticiones</button>
+      <button type="button" data-action="edit">Editar</button>
+      <button type="button" data-action="delete">Eliminar</button>
+    </div>
+
+    <section id="delete-song-modal" class="confirm-modal hidden" role="dialog" aria-modal="true" aria-labelledby="delete-song-title">
+      <article class="confirm-panel">
+        <h3 id="delete-song-title">¿Seguro que deseas eliminar esta canción?</h3>
+        <p id="delete-song-text"></p>
+        <div class="confirm-actions">
+          <button id="confirm-delete-song" type="button" class="submit-song">Eliminar</button>
+          <button id="cancel-delete-song" type="button" class="close-song-detail">Cancelar</button>
+        </div>
+      </article>
+    </section>
+
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
       import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-analytics.js";
@@ -109,6 +137,7 @@
         getDocs,
         doc,
         updateDoc,
+        deleteDoc,
         serverTimestamp
       } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
@@ -147,11 +176,21 @@
       const chordAccidentalSelect = document.getElementById("chord-accidental-select");
       const saveTokenChordButton = document.getElementById("save-token-chord");
       const saveSongChordsButton = document.getElementById("save-song-chords");
+      const contextMenu = document.getElementById("song-context-menu");
+      const deleteSongModal = document.getElementById("delete-song-modal");
+      const deleteSongText = document.getElementById("delete-song-text");
+      const confirmDeleteSongButton = document.getElementById("confirm-delete-song");
+      const cancelDeleteSongButton = document.getElementById("cancel-delete-song");
+      const sectionsSongLabel = document.getElementById("sections-song-label");
+      const repetitionsSongLabel = document.getElementById("repetitions-song-label");
 
       const appState = { activeScreen: "nueva-cancion", songs: [] };
       const songsById = new Map();
       let selectedTokenKey = null;
       let selectedTokenElement = null;
+      let contextSongId = null;
+      let songPendingDeleteId = null;
+      let editingSongId = null;
 
       const naturalRoots = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"];
       const accidentalOptions = [
@@ -287,6 +326,7 @@
           songCard.className = "song-card";
           songCard.innerHTML = `<h4>${song.title}</h4><p>${song.artist}</p>`;
           songCard.addEventListener("click", () => openSongDetail(song.id, "view"));
+          songCard.addEventListener("contextmenu", (event) => openSongContextMenu(event, song.id));
           songbookCards.prepend(songCard);
 
           const chordCard = document.createElement("article");
@@ -297,10 +337,78 @@
         });
       };
 
+      const openSongContextMenu = (event, songId) => {
+        event.preventDefault();
+        contextSongId = songId;
+        contextMenu.style.left = `${event.pageX}px`;
+        contextMenu.style.top = `${event.pageY}px`;
+        contextMenu.classList.remove("hidden");
+      };
+
+      const closeSongContextMenu = () => {
+        contextMenu.classList.add("hidden");
+      };
+
+      const startEditSong = (songId) => {
+        const song = songsById.get(songId);
+        if (!song) return;
+        editingSongId = songId;
+        songForm.querySelector("h3").textContent = "Editar canción";
+        songForm.querySelector(".submit-song").textContent = "Guardar cambios";
+        songForm.songTitle.value = song.title;
+        songForm.songArtist.value = song.artist;
+        songForm.songLyrics.value = song.lyrics;
+        setActiveScreen("nueva-cancion");
+        songFormWrapper.classList.remove("hidden");
+      };
+
+      const openDeleteSongModal = (songId) => {
+        const song = songsById.get(songId);
+        if (!song) return;
+        songPendingDeleteId = songId;
+        deleteSongText.textContent = `"${song.title}" - ${song.artist}`;
+        deleteSongModal.classList.remove("hidden");
+      };
+
+      const closeDeleteSongModal = () => {
+        deleteSongModal.classList.add("hidden");
+        songPendingDeleteId = null;
+      };
+
       navButtons.forEach((button) => button.addEventListener("click", () => setActiveScreen(button.dataset.screen)));
       openSongFormButton.addEventListener("click", () => songFormWrapper.classList.toggle("hidden"));
+      contextMenu.addEventListener("click", (event) => {
+        const action = event.target.dataset.action;
+        if (!action || !contextSongId) return;
+        const song = songsById.get(contextSongId);
+        if (!song) return;
+        if (action === "sections") {
+          sectionsSongLabel.textContent = `Secciones de: ${song.title} (${song.artist})`;
+          setActiveScreen("secciones");
+        } else if (action === "repetitions") {
+          repetitionsSongLabel.textContent = `Repeticiones de: ${song.title} (${song.artist})`;
+          setActiveScreen("repeticiones");
+        } else if (action === "edit") {
+          startEditSong(song.id);
+        } else if (action === "delete") {
+          openDeleteSongModal(song.id);
+        }
+        closeSongContextMenu();
+      });
       closeSongDetailButton.addEventListener("click", closeSongDetail);
+      cancelDeleteSongButton.addEventListener("click", closeDeleteSongModal);
+      confirmDeleteSongButton.addEventListener("click", () => {
+        if (!songPendingDeleteId) return;
+        deleteSong(songPendingDeleteId).catch((error) => {
+          console.error("Error eliminando canción:", error);
+          alert("No se pudo eliminar la canción.");
+        });
+      });
       songDetailModal.addEventListener("click", (event) => { if (event.target === songDetailModal) closeSongDetail(); });
+      deleteSongModal.addEventListener("click", (event) => { if (event.target === deleteSongModal) closeDeleteSongModal(); });
+      window.addEventListener("click", (event) => {
+        if (!contextMenu.contains(event.target)) closeSongContextMenu();
+      });
       songDetailChordWorkspace.addEventListener("click", (event) => {
         if (!event.target.closest(".lyrics-token") && !event.target.closest("#chord-editor-panel")) {
           selectedTokenKey = null;
@@ -317,7 +425,10 @@
         const artist = songForm.songArtist.value.trim();
         const lyrics = songForm.songLyrics.value.trim();
         if (!title || !artist || !lyrics) return;
-        saveSong({ title, artist, lyrics }).catch((error) => {
+        const saveAction = editingSongId
+          ? updateSong(editingSongId, { title, artist, lyrics })
+          : saveSong({ title, artist, lyrics });
+        saveAction.catch((error) => {
           console.error("Error guardando canción:", error);
           alert("No se pudo guardar la canción. Revisa la consola para más detalle.");
         });
@@ -348,8 +459,27 @@
           createdAt: serverTimestamp()
         });
         await loadSongs();
+        resetSongForm();
+      };
+
+      const updateSong = async (songId, { title, artist, lyrics }) => {
+        await updateDoc(doc(db, "songs", songId), { title, artist, lyrics });
+        await loadSongs();
+        resetSongForm();
+      };
+
+      const deleteSong = async (songId) => {
+        await deleteDoc(doc(db, "songs", songId));
+        await loadSongs();
+        closeDeleteSongModal();
+      };
+
+      const resetSongForm = () => {
+        editingSongId = null;
         songForm.reset();
         songFormWrapper.classList.add("hidden");
+        songForm.querySelector("h3").textContent = "Agregar canción";
+        songForm.querySelector(".submit-song").textContent = "Guardar canción";
       };
 
 
