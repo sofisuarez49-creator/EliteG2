@@ -472,8 +472,39 @@ body {
   cursor: pointer;
 }
 
-.lyrics-section-word {
-  display: inline-block;
-  padding: 2px 4px;
-  border-radius: 4px;
+.song-detail-lyrics {
+  display: grid;
+  gap: 10px;
+}
+
+.lyrics-section-card {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.lyrics-section-card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.lyrics-section-card p + p {
+  margin-top: 4px;
+}
+
+.section-introduccion {
+  background: #bdf5c0;
+}
+
+.section-estrofa {
+  background: #c8deff;
+}
+
+.section-estribillo {
+  background: #ffc9c9;
+}
+
+.section-puente {
+  background: #fff2a8;
 }
