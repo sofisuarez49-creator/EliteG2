@@ -432,3 +432,39 @@ body {
   padding: 8px 10px;
   font-size: 0.92rem;
 }
+
+.detail-help {
+  margin: 10px 0;
+  color: #555;
+}
+
+.sections-editor {
+  margin-top: 10px;
+}
+
+.sections-type-picker {
+  margin-top: 14px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.sections-type-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sections-type-actions button {
+  border: 1px solid #aaa;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.lyrics-section-word {
+  display: inline-block;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
