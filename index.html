@@ -66,7 +66,9 @@
 
         <section id="screen-bandas-cantantes" class="screen-panel hidden">
           <h3>Bandas/Cantantes</h3>
-          <p class="empty-text"></p>
+          <button id="bandas-back-button" type="button" class="close-song-detail hidden">Volver a bandas/cantantes</button>
+          <p id="bandas-cantantes-empty" class="empty-text"></p>
+          <div id="bandas-cantantes-cards" class="songbook-cards"></div>
         </section>
         <section id="screen-nueva-cancion" class="screen-panel">
           <section class="new-song-section">
@@ -202,6 +204,9 @@
       const repetitionsSongLabel = document.getElementById("repetitions-song-label");
       const sectionsEditor = document.getElementById("sections-editor");
       const sectionsTypePicker = document.getElementById("sections-type-picker");
+      const bandasBackButton = document.getElementById("bandas-back-button");
+      const bandasCantantesEmpty = document.getElementById("bandas-cantantes-empty");
+      const bandasCantantesCards = document.getElementById("bandas-cantantes-cards");
 
       const appState = { activeScreen: "nueva-cancion", songs: [] };
       const songsById = new Map();
@@ -213,6 +218,7 @@
       let activeSectionsSongId = null;
       let sectionSelectionStart = null;
       let sectionSelectionEnd = null;
+      let selectedPerformer = null;
 
       const naturalRoots = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"];
       const accidentalOptions = [
@@ -422,6 +428,7 @@
         songsById.clear();
         songbookCards.innerHTML = "";
         chordsCards.innerHTML = "";
+        renderBandasCantantesCards();
         appState.songs.forEach((song) => {
           songsById.set(song.id, song);
           const songCard = document.createElement("article");
@@ -436,6 +443,50 @@
           chordCard.innerHTML = `<h4>${song.title}</h4><p>${song.artist}</p><p>Asignar acordes por palabra</p>`;
           chordCard.addEventListener("click", () => openSongDetail(song.id, "chords"));
           chordsCards.prepend(chordCard);
+        });
+      };
+
+      const renderBandasCantantesCards = () => {
+        bandasCantantesCards.innerHTML = "";
+        const groupedSongs = appState.songs.reduce((acc, song) => {
+          const performerName = song.artist?.trim() || "Sin artista";
+          if (!acc[performerName]) acc[performerName] = [];
+          acc[performerName].push(song);
+          return acc;
+        }, {});
+        const performerNames = Object.keys(groupedSongs).sort((a, b) => a.localeCompare(b, "es"));
+
+        if (selectedPerformer) {
+          const performerSongs = groupedSongs[selectedPerformer] || [];
+          bandasBackButton.classList.remove("hidden");
+          bandasCantantesEmpty.textContent = `Canciones de ${selectedPerformer}`;
+          performerSongs.forEach((song) => {
+            const songCard = document.createElement("article");
+            songCard.className = "song-card";
+            songCard.innerHTML = `<h4>${song.title}</h4><p>${song.artist}</p>`;
+            songCard.addEventListener("click", () => openSongDetail(song.id, "view"));
+            bandasCantantesCards.appendChild(songCard);
+          });
+          if (!performerSongs.length) {
+            bandasCantantesEmpty.textContent = `No hay canciones para ${selectedPerformer}.`;
+          }
+          return;
+        }
+
+        bandasBackButton.classList.add("hidden");
+        bandasCantantesEmpty.textContent = performerNames.length
+          ? "Haz click en una tarjeta para ver sus canciones."
+          : "Aún no hay bandas o cantantes cargados.";
+
+        performerNames.forEach((performerName) => {
+          const performerCard = document.createElement("article");
+          performerCard.className = "song-card";
+          performerCard.innerHTML = `<h4>${performerName}</h4><p>${groupedSongs[performerName].length} canción(es)</p>`;
+          performerCard.addEventListener("click", () => {
+            selectedPerformer = performerName;
+            renderBandasCantantesCards();
+          });
+          bandasCantantesCards.appendChild(performerCard);
         });
       };
 
@@ -479,6 +530,10 @@
 
       navButtons.forEach((button) => button.addEventListener("click", () => setActiveScreen(button.dataset.screen)));
       openSongFormButton.addEventListener("click", () => songFormWrapper.classList.toggle("hidden"));
+      bandasBackButton.addEventListener("click", () => {
+        selectedPerformer = null;
+        renderBandasCantantesCards();
+      });
       contextMenu.addEventListener("click", (event) => {
         const action = event.target.dataset.action;
         if (!action || !contextSongId) return;
