@@ -331,11 +331,36 @@
 
       const renderLyricsWithSections = (song) => {
         const lines = tokenizeLyrics(song.lyrics);
-        return lines.map((tokens, lineIndex) => tokens.map((token, tokenIndex) => {
-          const type = getTokenSectionType(song, lineIndex, tokenIndex);
-          const color = sectionColors[type] || "#ffffff";
-          return `<span class="lyrics-section-word" style="background-color:${color}">${token}</span>`;
-        }).join(" ")).join("\n");
+        const groups = [];
+
+        lines.forEach((tokens, lineIndex) => {
+          tokens.forEach((token, tokenIndex) => {
+            const type = getTokenSectionType(song, lineIndex, tokenIndex);
+            const lastGroup = groups[groups.length - 1];
+            if (!lastGroup || lastGroup.type !== type) {
+              groups.push({ type, lines: [[]] });
+            }
+            const activeGroup = groups[groups.length - 1];
+            const currentLine = activeGroup.lines[activeGroup.lines.length - 1];
+            currentLine.push(token);
+          });
+
+          const nextLineHasTokens = lineIndex < lines.length - 1 && lines[lineIndex + 1].length > 0;
+          if (!nextLineHasTokens) return;
+          const lastGroup = groups[groups.length - 1];
+          if (lastGroup) {
+            lastGroup.lines.push([]);
+          }
+        });
+
+        return groups.map((group) => {
+          const className = group.type ? `lyrics-section-card section-${group.type}` : "lyrics-section-card";
+          const linesHtml = group.lines
+            .filter((line) => line.length)
+            .map((line) => `<p>${line.join(" ")}</p>`)
+            .join("");
+          return `<article class="${className}">${linesHtml}</article>`;
+        }).join("");
       };
 
       const renderSectionsEditor = (songId) => {
