@@ -264,6 +264,10 @@ body {
   display: none;
 }
 
+.confirm-modal.hidden {
+  display: none;
+}
+
 .confirm-modal {
   position: fixed;
   inset: 0;
